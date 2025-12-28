@@ -21,10 +21,22 @@ export async function GET(request: NextRequest) {
     });
 
     try {
-        const result = await cloudinary.api.resources_by_tag(tag, {
+        // Try searching by tag first
+        let result = await cloudinary.api.resources_by_tag(tag, {
             max_results: 50,
             context: true
         });
+
+        // If no resources found by tag, try folder prefix search
+        if (!result.resources || result.resources.length < 1) {
+            result = await cloudinary.api.resources({
+                type: 'upload',
+                prefix: tag.endsWith('/') ? tag : `${tag}/`,
+                max_results: 50,
+                context: true
+            });
+        }
+
         return NextResponse.json({ resources: result.resources });
     } catch (error: any) {
         console.error('Cloudinary API Error:', error);

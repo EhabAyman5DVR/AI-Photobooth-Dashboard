@@ -38,6 +38,16 @@ export default function ProjectDetailPage() {
     const [isSimulating, setIsSimulating] = useState(false);
     const [activeTab, setActiveTab] = useState<'overview' | 'images' | 'logs'>('overview');
     const [origin, setOrigin] = useState('');
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [editForm, setEditForm] = useState({
+        name: '',
+        description: '',
+        dailyLimit: 0,
+        cloudinaryCloudName: '',
+        cloudinaryTag: '',
+        cloudinaryApiKey: '',
+        cloudinaryApiSecret: ''
+    });
 
     useEffect(() => {
         setOrigin(window.location.origin);
@@ -59,6 +69,15 @@ export default function ProjectDetailPage() {
         }
 
         setProject(found);
+        setEditForm({
+            name: found.name,
+            description: found.description,
+            dailyLimit: found.dailyLimit,
+            cloudinaryCloudName: found.cloudinaryCloudName || '',
+            cloudinaryTag: found.cloudinaryTag || '',
+            cloudinaryApiKey: found.cloudinaryApiKey || '',
+            cloudinaryApiSecret: found.cloudinaryApiSecret || ''
+        });
         const allLogs = getStoreData<UsageLog[]>('pb_logs', []);
         setLogs(allLogs.filter(l => l.projectId === id).reverse());
 
@@ -67,6 +86,31 @@ export default function ProjectDetailPage() {
         }
     }, [id, user, router]);
 
+    const handleUpdateProject = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!project) return;
+
+        const projects = getStoreData<Project[]>('pb_projects', []);
+        const updatedProjects = projects.map(p => {
+            if (p.id === project.id) {
+                return {
+                    ...p,
+                    ...editForm
+                };
+            }
+            return p;
+        });
+
+        setStoreData('pb_projects', updatedProjects);
+        setProject(updatedProjects.find(p => p.id === id) || null);
+        setShowEditModal(false);
+
+        const updatedFound = updatedProjects.find(p => p.id === id);
+        if (updatedFound?.cloudinaryCloudName && updatedFound?.cloudinaryTag) {
+            fetchImages(updatedFound.cloudinaryCloudName, updatedFound.cloudinaryTag, updatedFound);
+        }
+    };
+
     const fetchImages = async (cloudName: string, tag: string, currentProject?: Project) => {
         const p = currentProject || project;
         if (!p) return;
@@ -74,11 +118,9 @@ export default function ProjectDetailPage() {
         setLoadingImages(true);
         try {
             let response;
-            if (p.cloudinaryApiKey && p.cloudinaryApiSecret) {
-                response = await fetch(`/api/cloudinary/images?cloudName=${cloudName}&tag=${tag}&apiKey=${p.cloudinaryApiKey}&apiSecret=${p.cloudinaryApiSecret}`);
-            } else {
-                response = await fetch(`https://res.cloudinary.com/${cloudName}/image/list/${tag}.json`);
-            }
+            // We now ONLY use our secure server-side SDK route.
+            // Client-side REST APIs are ignored for security.
+            response = await fetch(`/api/cloudinary/images?cloudName=${cloudName}&tag=${tag}&apiKey=${p.cloudinaryApiKey || ''}&apiSecret=${p.cloudinaryApiSecret || ''}`);
 
             if (response.ok) {
                 const data = await response.json();
@@ -233,8 +275,8 @@ export default function ProjectDetailPage() {
                                     onClick={handleSimulateApiCall}
                                     disabled={isSimulating || project.status === 'exhausted'}
                                     className={`flex items-center gap-2 px-6 py-2 rounded-xl font-bold transition-all ${isSimulating || project.status === 'exhausted'
-                                            ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                                            : 'bg-white text-slate-900 hover:bg-indigo-50 active:scale-95 shadow-lg shadow-white/10'
+                                        ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                                        : 'bg-white text-slate-900 hover:bg-indigo-50 active:scale-95 shadow-lg shadow-white/10'
                                         }`}
                                 >
                                     {isSimulating ? <RefreshCw className="animate-spin" size={18} /> : <Play size={18} />}
@@ -264,17 +306,25 @@ export default function ProjectDetailPage() {
                     </div>
 
                     <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6">
-                        <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                            <Settings size={18} className="text-slate-400" />
-                            Project Settings
-                        </h3>
+                        <div className="flex items-center justify-between">
+                            <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                                <Settings size={18} className="text-slate-400" />
+                                Project Settings
+                            </h3>
+                            <button
+                                onClick={() => setShowEditModal(true)}
+                                className="text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 px-3 py-1 rounded-lg transition-colors"
+                            >
+                                Edit
+                            </button>
+                        </div>
                         <div className="space-y-4">
                             <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
                                 <p className="text-xs font-bold text-slate-400 uppercase mb-2">Cloudinary Cloud</p>
                                 <p className="font-medium text-slate-700">{project.cloudinaryCloudName || 'Not set'}</p>
                             </div>
                             <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                                <p className="text-xs font-bold text-slate-400 uppercase mb-2">Cloudinary Tag</p>
+                                <p className="text-xs font-bold text-slate-400 uppercase mb-2">Tag / Folder Path</p>
                                 <p className="font-medium text-slate-700">{project.cloudinaryTag || 'Not set'}</p>
                             </div>
                             <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
@@ -375,7 +425,7 @@ export default function ProjectDetailPage() {
                                     <Info size={14} /> Tip for developers
                                 </p>
                                 <p className="text-xs text-indigo-900 leading-relaxed">
-                                    To enable client-side image listing, go to <b>Settings &gt; Security</b> in your Cloudinary Dashboard and enable <b>"Resource List"</b>.
+                                    The dashboard now uses the <b>Cloudinary Node.js SDK</b> securely. Ensure you have provided your <b>API Key</b> and <b>Secret</b> in the project settings. No insecure "Resource List" settings are required on Cloudinary.
                                 </p>
                             </div>
                         </div>
@@ -423,6 +473,104 @@ export default function ProjectDetailPage() {
                                 <p className="font-medium">No activity detected for this project yet</p>
                             </div>
                         )}
+                    </div>
+                </div>
+            )}
+            {showEditModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
+                    <div className="bg-white w-full max-w-xl rounded-2xl p-8 animate-in zoom-in-95 duration-200 my-8">
+                        <h2 className="text-2xl font-bold text-slate-800 mb-6">Edit Project</h2>
+                        <form onSubmit={handleUpdateProject} className="space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-4">
+                                    <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Basic Information</h3>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Project Name</label>
+                                        <input
+                                            required
+                                            type="text"
+                                            value={editForm.name}
+                                            onChange={e => setEditForm({ ...editForm, name: e.target.value })}
+                                            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                                        <textarea
+                                            value={editForm.description}
+                                            onChange={e => setEditForm({ ...editForm, description: e.target.value })}
+                                            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            rows={3}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Daily Limit</label>
+                                        <input
+                                            type="number"
+                                            value={editForm.dailyLimit}
+                                            onChange={e => setEditForm({ ...editForm, dailyLimit: parseInt(e.target.value) })}
+                                            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Cloudinary Setup</h3>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Cloud Name</label>
+                                        <input
+                                            type="text"
+                                            value={editForm.cloudinaryCloudName}
+                                            onChange={e => setEditForm({ ...editForm, cloudinaryCloudName: e.target.value })}
+                                            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Asset Tag/Folder</label>
+                                        <input
+                                            type="text"
+                                            value={editForm.cloudinaryTag}
+                                            onChange={e => setEditForm({ ...editForm, cloudinaryTag: e.target.value })}
+                                            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">API Key (Secure Access)</label>
+                                        <input
+                                            type="password"
+                                            value={editForm.cloudinaryApiKey}
+                                            onChange={e => setEditForm({ ...editForm, cloudinaryApiKey: e.target.value })}
+                                            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">API Secret (Secure Access)</label>
+                                        <input
+                                            type="password"
+                                            value={editForm.cloudinaryApiSecret}
+                                            onChange={e => setEditForm({ ...editForm, cloudinaryApiSecret: e.target.value })}
+                                            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3 pt-4 border-t border-slate-100">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowEditModal(false)}
+                                    className="flex-1 py-3 text-slate-600 font-medium hover:bg-slate-50 rounded-xl transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
+                                >
+                                    Save Changes
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}

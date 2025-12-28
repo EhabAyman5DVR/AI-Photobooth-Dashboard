@@ -20,7 +20,9 @@ export default function ProjectListPage() {
         dailyLimit: 1000,
         ownerId: '',
         cloudinaryCloudName: '',
-        cloudinaryTag: ''
+        cloudinaryTag: '',
+        cloudinaryApiKey: '',
+        cloudinaryApiSecret: ''
     });
 
     const [projects, setProjects] = useState<Project[]>([]);
@@ -76,7 +78,7 @@ export default function ProjectListPage() {
         }
 
         setShowModal(false);
-        setNewProject({ name: '', description: '', dailyLimit: 1000, ownerId: '', cloudinaryCloudName: '', cloudinaryTag: '' });
+        setNewProject({ name: '', description: '', dailyLimit: 1000, ownerId: '', cloudinaryCloudName: '', cloudinaryTag: '', cloudinaryApiKey: '', cloudinaryApiSecret: '' });
     };
 
     if (!user) return null;
@@ -203,6 +205,26 @@ export default function ProjectListPage() {
                                             onChange={e => setNewProject({ ...newProject, cloudinaryTag: e.target.value })}
                                             className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
                                             placeholder="e.g. event-2024"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">API Key (Secure Access)</label>
+                                        <input
+                                            type="password"
+                                            value={newProject.cloudinaryApiKey}
+                                            onChange={e => setNewProject({ ...newProject, cloudinaryApiKey: e.target.value })}
+                                            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            placeholder="Cloudinary API Key"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">API Secret (Secure Access)</label>
+                                        <input
+                                            type="password"
+                                            value={newProject.cloudinaryApiSecret}
+                                            onChange={e => setNewProject({ ...newProject, cloudinaryApiSecret: e.target.value })}
+                                            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            placeholder="Cloudinary API Secret"
                                         />
                                     </div>
                                     <div>
