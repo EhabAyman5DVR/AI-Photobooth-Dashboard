@@ -24,6 +24,8 @@ export interface Project {
   ownerId: string;
   cloudinaryCloudName?: string;
   cloudinaryTag?: string;
+  cloudinaryApiKey?: string;
+  cloudinaryApiSecret?: string;
 }
 
 export interface UsageLog {

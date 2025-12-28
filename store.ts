@@ -36,15 +36,18 @@ const INITIAL_PROJECTS: Project[] = [
 ];
 
 export const getStoreData = <T,>(key: string, initialValue: T): T => {
+  if (typeof window === 'undefined') return initialValue;
   const data = localStorage.getItem(key);
   return data ? JSON.parse(data) : initialValue;
 };
 
 export const setStoreData = (key: string, value: any) => {
+  if (typeof window === 'undefined') return;
   localStorage.setItem(key, JSON.stringify(value));
 };
 
 export const initializeStore = () => {
+  if (typeof window === 'undefined') return;
   if (!localStorage.getItem('pb_users')) {
     setStoreData('pb_users', INITIAL_USERS);
   }
