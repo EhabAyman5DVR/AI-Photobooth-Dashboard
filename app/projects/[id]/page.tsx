@@ -38,6 +38,8 @@ export default function ProjectDetailPage() {
     const [isSimulating, setIsSimulating] = useState(false);
     const [activeTab, setActiveTab] = useState<'overview' | 'images' | 'logs'>('overview');
     const [origin, setOrigin] = useState('');
+    const [nextCursor, setNextCursor] = useState<string | null>(null);
+    const [loadingMore, setLoadingMore] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
     const [editForm, setEditForm] = useState({
         name: '',
@@ -111,27 +113,37 @@ export default function ProjectDetailPage() {
         }
     };
 
-    const fetchImages = async (cloudName: string, tag: string, currentProject?: Project) => {
+    const fetchImages = async (cloudName: string, tag: string, currentProject?: Project, append = false) => {
         const p = currentProject || project;
         if (!p) return;
 
-        setLoadingImages(true);
+        if (append) setLoadingMore(true);
+        else setLoadingImages(true);
+
         try {
-            let response;
-            // We now ONLY use our secure server-side SDK route.
-            // Client-side REST APIs are ignored for security.
-            response = await fetch(`/api/cloudinary/images?cloudName=${cloudName}&tag=${tag}&apiKey=${p.cloudinaryApiKey || ''}&apiSecret=${p.cloudinaryApiSecret || ''}`);
+            let url = `/api/cloudinary/images?cloudName=${cloudName}&tag=${tag}&apiKey=${p.cloudinaryApiKey || ''}&apiSecret=${p.cloudinaryApiSecret || ''}`;
+            if (append && nextCursor) {
+                url += `&next_cursor=${nextCursor}`;
+            }
+
+            const response = await fetch(url);
 
             if (response.ok) {
                 const data = await response.json();
-                setImages(data.resources || []);
+                if (append) {
+                    setImages(prev => [...prev, ...(data.resources || [])]);
+                } else {
+                    setImages(data.resources || []);
+                }
+                setNextCursor(data.next_cursor || null);
             } else {
-                setImages([]);
+                if (!append) setImages([]);
             }
         } catch (err) {
             console.error('Error fetching Cloudinary images:', err);
         } finally {
             setLoadingImages(false);
+            setLoadingMore(false);
         }
     };
 
@@ -384,33 +396,48 @@ export default function ProjectDetailPage() {
                             ))}
                         </div>
                     ) : images.length > 0 ? (
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                            {images.map(img => (
-                                <div key={img.public_id} className="group relative aspect-square bg-slate-100 rounded-2xl overflow-hidden border border-slate-100 hover:shadow-xl transition-all duration-300">
-                                    <img
-                                        src={`https://res.cloudinary.com/${project.cloudinaryCloudName}/image/upload/w_400,c_fill,g_auto/v${img.version}/${img.public_id}.${img.format}`}
-                                        alt={img.public_id}
-                                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                                    />
-                                    <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-4 flex flex-col justify-end">
-                                        <p className="text-white text-xs font-bold truncate">{img.public_id}</p>
-                                        <div className="flex items-center gap-2 mt-2">
-                                            <button className="p-1.5 bg-white/20 backdrop-blur-md rounded-lg text-white hover:bg-white/40 transition-colors">
-                                                <Download size={14} />
-                                            </button>
-                                            <a
-                                                href={`https://res.cloudinary.com/${project.cloudinaryCloudName}/image/upload/v${img.version}/${img.public_id}.${img.format}`}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="p-1.5 bg-white/20 backdrop-blur-md rounded-lg text-white hover:bg-white/40 transition-colors"
-                                            >
-                                                <ExternalLink size={14} />
-                                            </a>
+                        <>
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                                {images.map(img => (
+                                    <div key={img.public_id} className="group relative aspect-square bg-slate-100 rounded-2xl overflow-hidden border border-slate-100 hover:shadow-xl transition-all duration-300">
+                                        <img
+                                            src={`https://res.cloudinary.com/${project.cloudinaryCloudName}/image/upload/w_400,c_fill,g_auto/v${img.version}/${img.public_id}.${img.format}`}
+                                            alt={img.public_id}
+                                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                                        />
+                                        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-4 flex flex-col justify-end">
+                                            <p className="text-white text-xs font-bold truncate">{img.public_id}</p>
+                                            <div className="flex items-center gap-2 mt-2">
+                                                <button className="p-1.5 bg-white/20 backdrop-blur-md rounded-lg text-white hover:bg-white/40 transition-colors">
+                                                    <Download size={14} />
+                                                </button>
+                                                <a
+                                                    href={`https://res.cloudinary.com/${project.cloudinaryCloudName}/image/upload/v${img.version}/${img.public_id}.${img.format}`}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="p-1.5 bg-white/20 backdrop-blur-md rounded-lg text-white hover:bg-white/40 transition-colors"
+                                                >
+                                                    <ExternalLink size={14} />
+                                                </a>
+                                            </div>
                                         </div>
                                     </div>
+                                ))}
+                            </div>
+
+                            {nextCursor && (
+                                <div className="mt-12 flex justify-center">
+                                    <button
+                                        onClick={() => project.cloudinaryCloudName && project.cloudinaryTag && fetchImages(project.cloudinaryCloudName, project.cloudinaryTag, undefined, true)}
+                                        disabled={loadingMore}
+                                        className="flex items-center gap-2 px-8 py-3 bg-white border border-slate-200 rounded-xl text-slate-600 font-bold hover:bg-slate-50 hover:border-indigo-200 transition-all shadow-sm active:scale-95 disabled:opacity-50 disabled:active:scale-100"
+                                    >
+                                        {loadingMore ? <RefreshCw className="animate-spin" size={18} /> : null}
+                                        {loadingMore ? 'Loading More...' : 'Load More Images'}
+                                    </button>
                                 </div>
-                            ))}
-                        </div>
+                            )}
+                        </>
                     ) : (
                         <div className="flex flex-col items-center justify-center py-20 text-center border-2 border-dashed border-slate-100 rounded-3xl">
                             <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-300 mb-4">
@@ -431,149 +458,154 @@ export default function ProjectDetailPage() {
                         </div>
                     )}
                 </div>
-            )}
+            )
+            }
 
-            {activeTab === 'logs' && (
-                <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
-                    <div className="flex items-center justify-between mb-8">
-                        <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                            <History className="text-indigo-500" />
-                            API Access Logs
-                        </h3>
-                        <span className="text-xs font-bold text-slate-400 uppercase tracking-widest bg-slate-50 px-3 py-1 rounded-full">
-                            Real-time feed
-                        </span>
-                    </div>
-                    <div className="space-y-4">
-                        {logs.map(log => (
-                            <div key={log.id} className="flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-100 group hover:bg-white hover:shadow-md transition-all">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-emerald-500 border border-slate-100 shadow-sm group-hover:scale-110 transition-transform">
-                                        <Zap size={18} fill="currentColor" />
+            {
+                activeTab === 'logs' && (
+                    <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
+                        <div className="flex items-center justify-between mb-8">
+                            <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                <History className="text-indigo-500" />
+                                API Access Logs
+                            </h3>
+                            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest bg-slate-50 px-3 py-1 rounded-full">
+                                Real-time feed
+                            </span>
+                        </div>
+                        <div className="space-y-4">
+                            {logs.map(log => (
+                                <div key={log.id} className="flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-100 group hover:bg-white hover:shadow-md transition-all">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-emerald-500 border border-slate-100 shadow-sm group-hover:scale-110 transition-transform">
+                                            <Zap size={18} fill="currentColor" />
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-bold text-slate-800">Image Generation Increment (+{log.amount})</p>
+                                            <p className="text-xs text-slate-500">{new Date(log.timestamp).toLocaleString()} • Successful Request</p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <p className="text-sm font-bold text-slate-800">Image Generation Increment (+{log.amount})</p>
-                                        <p className="text-xs text-slate-500">{new Date(log.timestamp).toLocaleString()} • Successful Request</p>
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded border border-emerald-100">
+                                            HTTP 200 OK
+                                        </span>
+                                        <div className="h-4 w-[1px] bg-slate-200 hidden md:block" />
+                                        <span className="text-[10px] text-slate-400 font-mono hidden md:block">
+                                            ref: {log.id.split('-')[1]}
+                                        </span>
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-3">
-                                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded border border-emerald-100">
-                                        HTTP 200 OK
-                                    </span>
-                                    <div className="h-4 w-[1px] bg-slate-200 hidden md:block" />
-                                    <span className="text-[10px] text-slate-400 font-mono hidden md:block">
-                                        ref: {log.id.split('-')[1]}
-                                    </span>
+                            ))}
+                            {logs.length === 0 && (
+                                <div className="flex flex-col items-center justify-center py-20 text-slate-300">
+                                    <Activity size={48} className="opacity-20 mb-4" />
+                                    <p className="font-medium">No activity detected for this project yet</p>
                                 </div>
-                            </div>
-                        ))}
-                        {logs.length === 0 && (
-                            <div className="flex flex-col items-center justify-center py-20 text-slate-300">
-                                <Activity size={48} className="opacity-20 mb-4" />
-                                <p className="font-medium">No activity detected for this project yet</p>
-                            </div>
-                        )}
+                            )}
+                        </div>
                     </div>
-                </div>
-            )}
-            {showEditModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
-                    <div className="bg-white w-full max-w-xl rounded-2xl p-8 animate-in zoom-in-95 duration-200 my-8">
-                        <h2 className="text-2xl font-bold text-slate-800 mb-6">Edit Project</h2>
-                        <form onSubmit={handleUpdateProject} className="space-y-6">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div className="space-y-4">
-                                    <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Basic Information</h3>
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-1">Project Name</label>
-                                        <input
-                                            required
-                                            type="text"
-                                            value={editForm.name}
-                                            onChange={e => setEditForm({ ...editForm, name: e.target.value })}
-                                            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                                        />
+                )
+            }
+            {
+                showEditModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
+                        <div className="bg-white w-full max-w-xl rounded-2xl p-8 animate-in zoom-in-95 duration-200 my-8">
+                            <h2 className="text-2xl font-bold text-slate-800 mb-6">Edit Project</h2>
+                            <form onSubmit={handleUpdateProject} className="space-y-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="space-y-4">
+                                        <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Basic Information</h3>
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">Project Name</label>
+                                            <input
+                                                required
+                                                type="text"
+                                                value={editForm.name}
+                                                onChange={e => setEditForm({ ...editForm, name: e.target.value })}
+                                                className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                                            <textarea
+                                                value={editForm.description}
+                                                onChange={e => setEditForm({ ...editForm, description: e.target.value })}
+                                                className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                rows={3}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">Daily Limit</label>
+                                            <input
+                                                type="number"
+                                                value={editForm.dailyLimit}
+                                                onChange={e => setEditForm({ ...editForm, dailyLimit: parseInt(e.target.value) })}
+                                                className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            />
+                                        </div>
                                     </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
-                                        <textarea
-                                            value={editForm.description}
-                                            onChange={e => setEditForm({ ...editForm, description: e.target.value })}
-                                            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                                            rows={3}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-1">Daily Limit</label>
-                                        <input
-                                            type="number"
-                                            value={editForm.dailyLimit}
-                                            onChange={e => setEditForm({ ...editForm, dailyLimit: parseInt(e.target.value) })}
-                                            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                                        />
+
+                                    <div className="space-y-4">
+                                        <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Cloudinary Setup</h3>
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">Cloud Name</label>
+                                            <input
+                                                type="text"
+                                                value={editForm.cloudinaryCloudName}
+                                                onChange={e => setEditForm({ ...editForm, cloudinaryCloudName: e.target.value })}
+                                                className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">Asset Tag/Folder</label>
+                                            <input
+                                                type="text"
+                                                value={editForm.cloudinaryTag}
+                                                onChange={e => setEditForm({ ...editForm, cloudinaryTag: e.target.value })}
+                                                className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">API Key (Secure Access)</label>
+                                            <input
+                                                type="password"
+                                                value={editForm.cloudinaryApiKey}
+                                                onChange={e => setEditForm({ ...editForm, cloudinaryApiKey: e.target.value })}
+                                                className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">API Secret (Secure Access)</label>
+                                            <input
+                                                type="password"
+                                                value={editForm.cloudinaryApiSecret}
+                                                onChange={e => setEditForm({ ...editForm, cloudinaryApiSecret: e.target.value })}
+                                                className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
 
-                                <div className="space-y-4">
-                                    <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Cloudinary Setup</h3>
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-1">Cloud Name</label>
-                                        <input
-                                            type="text"
-                                            value={editForm.cloudinaryCloudName}
-                                            onChange={e => setEditForm({ ...editForm, cloudinaryCloudName: e.target.value })}
-                                            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-1">Asset Tag/Folder</label>
-                                        <input
-                                            type="text"
-                                            value={editForm.cloudinaryTag}
-                                            onChange={e => setEditForm({ ...editForm, cloudinaryTag: e.target.value })}
-                                            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-1">API Key (Secure Access)</label>
-                                        <input
-                                            type="password"
-                                            value={editForm.cloudinaryApiKey}
-                                            onChange={e => setEditForm({ ...editForm, cloudinaryApiKey: e.target.value })}
-                                            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-1">API Secret (Secure Access)</label>
-                                        <input
-                                            type="password"
-                                            value={editForm.cloudinaryApiSecret}
-                                            onChange={e => setEditForm({ ...editForm, cloudinaryApiSecret: e.target.value })}
-                                            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                                        />
-                                    </div>
+                                <div className="flex gap-3 pt-4 border-t border-slate-100">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowEditModal(false)}
+                                        className="flex-1 py-3 text-slate-600 font-medium hover:bg-slate-50 rounded-xl transition-colors"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
+                                    >
+                                        Save Changes
+                                    </button>
                                 </div>
-                            </div>
-
-                            <div className="flex gap-3 pt-4 border-t border-slate-100">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowEditModal(false)}
-                                    className="flex-1 py-3 text-slate-600 font-medium hover:bg-slate-50 rounded-xl transition-colors"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
-                                >
-                                    Save Changes
-                                </button>
-                            </div>
-                        </form>
+                            </form>
+                        </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 }

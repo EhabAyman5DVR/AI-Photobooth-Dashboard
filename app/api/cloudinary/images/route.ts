@@ -8,6 +8,7 @@ export async function GET(request: NextRequest) {
     const apiKey = searchParams.get('apiKey');
     const apiSecret = searchParams.get('apiSecret');
     const tag = searchParams.get('tag');
+    const nextCursor = searchParams.get('next_cursor');
 
     if (!cloudName || !apiKey || !apiSecret || !tag) {
         return NextResponse.json({ error: 'Missing Cloudinary configuration' }, { status: 400 });
@@ -21,23 +22,20 @@ export async function GET(request: NextRequest) {
     });
 
     try {
-        // Try searching by tag first
-        let result = await cloudinary.api.resources_by_tag(tag, {
-            max_results: 50,
-            context: true
+        // Use Search API for explicit newest-first sorting (created_at descending)
+        // This covers both folder prefix and tag matching in one query
+        // Excludes images in the 'qr-codes' subfolder
+        const result = await cloudinary.search
+            .expression(`(tags:"${tag}" OR folder:"${tag}/*") AND NOT folder:"${tag}/qr-codes/*"`)
+            .sort_by('created_at', 'desc')
+            .max_results(24)
+            .next_cursor(nextCursor || undefined)
+            .execute();
+
+        return NextResponse.json({
+            resources: result.resources,
+            next_cursor: result.next_cursor
         });
-
-        // If no resources found by tag, try folder prefix search
-        if (!result.resources || result.resources.length < 1) {
-            result = await cloudinary.api.resources({
-                type: 'upload',
-                prefix: tag.endsWith('/') ? tag : `${tag}/`,
-                max_results: 50,
-                context: true
-            });
-        }
-
-        return NextResponse.json({ resources: result.resources });
     } catch (error: any) {
         console.error('Cloudinary API Error:', error);
         return NextResponse.json({ error: error.message || 'Failed to fetch images' }, { status: 500 });
