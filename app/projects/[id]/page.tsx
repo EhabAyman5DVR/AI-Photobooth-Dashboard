@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Project, UsageLog, UserRole, CloudinaryImage } from '@/types';
+import { Project, UsageLog, UserRole, CloudinaryImage, GlobalSettings } from '@/types';
 import { getStoreData, setStoreData } from '@/store';
 import {
     ArrowLeft,
@@ -45,11 +45,9 @@ export default function ProjectDetailPage() {
         name: '',
         description: '',
         dailyLimit: 0,
-        cloudinaryCloudName: '',
-        cloudinaryTag: '',
-        cloudinaryApiKey: '',
-        cloudinaryApiSecret: ''
+        cloudinaryTag: ''
     });
+    const [globalSettings, setGlobalSettings] = useState<GlobalSettings | null>(null);
 
     useEffect(() => {
         setOrigin(window.location.origin);
@@ -75,16 +73,22 @@ export default function ProjectDetailPage() {
             name: found.name,
             description: found.description,
             dailyLimit: found.dailyLimit,
-            cloudinaryCloudName: found.cloudinaryCloudName || '',
-            cloudinaryTag: found.cloudinaryTag || '',
-            cloudinaryApiKey: found.cloudinaryApiKey || '',
-            cloudinaryApiSecret: found.cloudinaryApiSecret || ''
+            cloudinaryTag: found.cloudinaryTag || ''
         });
+
+        const settings = getStoreData<GlobalSettings>('pb_settings', {
+            cloudinaryCloudName: '',
+            cloudinaryApiKey: '',
+            cloudinaryApiSecret: ''
+        });
+        setGlobalSettings(settings);
+
         const allLogs = getStoreData<UsageLog[]>('pb_logs', []);
         setLogs(allLogs.filter(l => l.projectId === id).reverse());
 
-        if (found.cloudinaryCloudName && found.cloudinaryTag) {
-            fetchImages(found.cloudinaryCloudName, found.cloudinaryTag, found);
+        const cloudName = settings.cloudinaryCloudName || found.cloudinaryCloudName;
+        if (cloudName && found.cloudinaryTag) {
+            fetchImages(cloudName, found.cloudinaryTag, found, false, settings);
         }
     }, [id, user, router]);
 
@@ -104,30 +108,43 @@ export default function ProjectDetailPage() {
         });
 
         setStoreData('pb_projects', updatedProjects);
-        setProject(updatedProjects.find(p => p.id === id) || null);
+        const updatedProject = updatedProjects.find(p => p.id === id) || null;
+        setProject(updatedProject);
         setShowEditModal(false);
 
-        const updatedFound = updatedProjects.find(p => p.id === id);
-        if (updatedFound?.cloudinaryCloudName && updatedFound?.cloudinaryTag) {
-            fetchImages(updatedFound.cloudinaryCloudName, updatedFound.cloudinaryTag, updatedFound);
+        const cloudName = globalSettings?.cloudinaryCloudName || updatedProject?.cloudinaryCloudName;
+        if (cloudName && updatedProject?.cloudinaryTag) {
+            fetchImages(cloudName, updatedProject.cloudinaryTag, updatedProject, false, globalSettings || undefined);
         }
     };
 
-    const fetchImages = async (cloudName: string, tag: string, currentProject?: Project, append = false) => {
+    const fetchImages = async (cloudName?: string, tag?: string, currentProject?: Project, append = false, settings?: GlobalSettings) => {
         const p = currentProject || project;
         if (!p) return;
+
+        const activeSettings = settings || globalSettings || getStoreData<GlobalSettings>('pb_settings', {
+            cloudinaryCloudName: '',
+            cloudinaryApiKey: '',
+            cloudinaryApiSecret: ''
+        });
+
+        const activeTag = tag || p.cloudinaryTag || '';
+        const apiKey = activeSettings.cloudinaryApiKey || p.cloudinaryApiKey || '';
+        const apiSecret = activeSettings.cloudinaryApiSecret || p.cloudinaryApiSecret || '';
+        const activeCloudName = activeSettings.cloudinaryCloudName || cloudName || p.cloudinaryCloudName || '';
+
+        if (!activeCloudName || !activeTag) return;
 
         if (append) setLoadingMore(true);
         else setLoadingImages(true);
 
         try {
-            let url = `/api/cloudinary/images?cloudName=${cloudName}&tag=${tag}&apiKey=${p.cloudinaryApiKey || ''}&apiSecret=${p.cloudinaryApiSecret || ''}`;
+            let url = `/api/cloudinary/images?cloudName=${activeCloudName}&tag=${activeTag}&apiKey=${apiKey}&apiSecret=${apiSecret}`;
             if (append && nextCursor) {
                 url += `&next_cursor=${nextCursor}`;
             }
 
             const response = await fetch(url);
-
             if (response.ok) {
                 const data = await response.json();
                 if (append) {
@@ -184,8 +201,8 @@ export default function ProjectDetailPage() {
             setLogs(updatedLogs.filter(l => l.projectId === id).reverse());
             setIsSimulating(false);
 
-            if (latestProject?.cloudinaryCloudName && latestProject?.cloudinaryTag) {
-                fetchImages(latestProject.cloudinaryCloudName, latestProject.cloudinaryTag, latestProject);
+            if (latestProject) {
+                fetchImages(undefined, undefined, latestProject);
             }
         }, 800);
     };
@@ -213,7 +230,7 @@ export default function ProjectDetailPage() {
                     <div>
                         <h2 className="text-2xl font-bold text-slate-800">{project.name}</h2>
                         <p className="text-slate-500 text-sm flex items-center gap-2">
-                            ID: {project.id} • <span className="text-indigo-600 font-medium">{project.cloudinaryTag || 'No Cloudinary Tag'}</span>
+                            ID: {project.id} • <span className="text-indigo-600 font-medium">#{project.cloudinaryTag || 'No Tag'}</span>
                         </p>
                     </div>
                 </div>
@@ -333,19 +350,25 @@ export default function ProjectDetailPage() {
                         <div className="space-y-4">
                             <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
                                 <p className="text-xs font-bold text-slate-400 uppercase mb-2">Cloudinary Cloud</p>
-                                <p className="font-medium text-slate-700">{project.cloudinaryCloudName || 'Not set'}</p>
+                                <p className="font-medium text-slate-700">{globalSettings?.cloudinaryCloudName || project.cloudinaryCloudName || 'Not set'}</p>
+                                {(globalSettings?.cloudinaryCloudName) && (
+                                    <span className="text-[10px] text-indigo-500 font-bold uppercase mt-1 block">Global setting active</span>
+                                )}
                             </div>
                             <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
                                 <p className="text-xs font-bold text-slate-400 uppercase mb-2">Tag / Folder Path</p>
                                 <p className="font-medium text-slate-700">{project.cloudinaryTag || 'Not set'}</p>
                             </div>
                             <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                                <p className="text-xs font-bold text-slate-400 uppercase mb-2">API Key</p>
-                                <p className="font-medium text-slate-700">{project.cloudinaryApiKey ? '••••••••' + project.cloudinaryApiKey.slice(-4) : 'Not set'}</p>
-                            </div>
-                            <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                                <p className="text-xs font-bold text-slate-400 uppercase mb-2">API Secret</p>
-                                <p className="font-medium text-slate-700">{project.cloudinaryApiSecret ? '••••••••••••' : 'Not set'}</p>
+                                <p className="text-xs font-bold text-slate-400 uppercase mb-2">API Security</p>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100 uppercase">
+                                        SDK Protected
+                                    </span>
+                                    {globalSettings?.cloudinaryApiKey && (
+                                        <span className="text-[10px] text-indigo-500 font-bold uppercase">Via Global Settings</span>
+                                    )}
+                                </div>
                             </div>
                             <div className="pt-4 border-t border-slate-100">
                                 <button className="w-full py-2 flex items-center justify-center gap-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors font-medium">
@@ -371,7 +394,7 @@ export default function ProjectDetailPage() {
                             </p>
                         </div>
                         <button
-                            onClick={() => project.cloudinaryCloudName && project.cloudinaryTag && fetchImages(project.cloudinaryCloudName, project.cloudinaryTag)}
+                            onClick={() => fetchImages()}
                             className="flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-slate-100 rounded-xl text-slate-600 text-sm font-bold transition-all"
                         >
                             <RefreshCw size={16} className={loadingImages ? 'animate-spin' : ''} />
@@ -379,7 +402,7 @@ export default function ProjectDetailPage() {
                         </button>
                     </div>
 
-                    {!project.cloudinaryCloudName || !project.cloudinaryTag ? (
+                    {!(globalSettings?.cloudinaryCloudName || project.cloudinaryCloudName) || !project.cloudinaryTag ? (
                         <div className="flex flex-col items-center justify-center py-20 text-center">
                             <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center text-amber-500 mb-4">
                                 <Info size={32} />
@@ -401,7 +424,7 @@ export default function ProjectDetailPage() {
                                 {images.map(img => (
                                     <div key={img.public_id} className="group relative aspect-square bg-slate-100 rounded-2xl overflow-hidden border border-slate-100 hover:shadow-xl transition-all duration-300">
                                         <img
-                                            src={`https://res.cloudinary.com/${project.cloudinaryCloudName}/image/upload/w_400,c_fill,g_auto/v${img.version}/${img.public_id}.${img.format}`}
+                                            src={`https://res.cloudinary.com/${globalSettings?.cloudinaryCloudName || project.cloudinaryCloudName}/image/upload/w_400,c_fill,g_auto/v${img.version}/${img.public_id}.${img.format}`}
                                             alt={img.public_id}
                                             className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                                         />
@@ -412,7 +435,7 @@ export default function ProjectDetailPage() {
                                                     <Download size={14} />
                                                 </button>
                                                 <a
-                                                    href={`https://res.cloudinary.com/${project.cloudinaryCloudName}/image/upload/v${img.version}/${img.public_id}.${img.format}`}
+                                                    href={`https://res.cloudinary.com/${globalSettings?.cloudinaryCloudName || project.cloudinaryCloudName}/image/upload/v${img.version}/${img.public_id}.${img.format}`}
                                                     target="_blank"
                                                     rel="noreferrer"
                                                     className="p-1.5 bg-white/20 backdrop-blur-md rounded-lg text-white hover:bg-white/40 transition-colors"
@@ -424,11 +447,10 @@ export default function ProjectDetailPage() {
                                     </div>
                                 ))}
                             </div>
-
                             {nextCursor && (
                                 <div className="mt-12 flex justify-center">
                                     <button
-                                        onClick={() => project.cloudinaryCloudName && project.cloudinaryTag && fetchImages(project.cloudinaryCloudName, project.cloudinaryTag, undefined, true)}
+                                        onClick={() => fetchImages(undefined, undefined, undefined, true)}
                                         disabled={loadingMore}
                                         className="flex items-center gap-2 px-8 py-3 bg-white border border-slate-200 rounded-xl text-slate-600 font-bold hover:bg-slate-50 hover:border-indigo-200 transition-all shadow-sm active:scale-95 disabled:opacity-50 disabled:active:scale-100"
                                     >
@@ -452,14 +474,13 @@ export default function ProjectDetailPage() {
                                     <Info size={14} /> Tip for developers
                                 </p>
                                 <p className="text-xs text-indigo-900 leading-relaxed">
-                                    The dashboard now uses the <b>Cloudinary Node.js SDK</b> securely. Ensure you have provided your <b>API Key</b> and <b>Secret</b> in the project settings. No insecure "Resource List" settings are required on Cloudinary.
+                                    The dashboard now uses the <b>Cloudinary Node.js SDK</b> securely. Ensure you have provided your <b>API Key</b> and <b>Secret</b> in the global settings. No insecure "Resource List" settings are required on Cloudinary.
                                 </p>
                             </div>
                         </div>
                     )}
                 </div>
-            )
-            }
+            )}
 
             {
                 activeTab === 'logs' && (
@@ -546,16 +567,7 @@ export default function ProjectDetailPage() {
                                     </div>
 
                                     <div className="space-y-4">
-                                        <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Cloudinary Setup</h3>
-                                        <div>
-                                            <label className="block text-sm font-medium text-slate-700 mb-1">Cloud Name</label>
-                                            <input
-                                                type="text"
-                                                value={editForm.cloudinaryCloudName}
-                                                onChange={e => setEditForm({ ...editForm, cloudinaryCloudName: e.target.value })}
-                                                className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                                            />
-                                        </div>
+                                        <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Gallery Configuration</h3>
                                         <div>
                                             <label className="block text-sm font-medium text-slate-700 mb-1">Asset Tag/Folder</label>
                                             <input
@@ -564,24 +576,9 @@ export default function ProjectDetailPage() {
                                                 onChange={e => setEditForm({ ...editForm, cloudinaryTag: e.target.value })}
                                                 className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
                                             />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-slate-700 mb-1">API Key (Secure Access)</label>
-                                            <input
-                                                type="password"
-                                                value={editForm.cloudinaryApiKey}
-                                                onChange={e => setEditForm({ ...editForm, cloudinaryApiKey: e.target.value })}
-                                                className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-slate-700 mb-1">API Secret (Secure Access)</label>
-                                            <input
-                                                type="password"
-                                                value={editForm.cloudinaryApiSecret}
-                                                onChange={e => setEditForm({ ...editForm, cloudinaryApiSecret: e.target.value })}
-                                                className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                                            />
+                                            <p className="mt-2 text-[10px] text-slate-400 leading-relaxed italic">
+                                                * Cloudinary Cloud Name and API credentials are now managed globally in Settings.
+                                            </p>
                                         </div>
                                     </div>
                                 </div>
@@ -606,6 +603,6 @@ export default function ProjectDetailPage() {
                     </div>
                 )
             }
-        </div >
+        </div>
     );
 }

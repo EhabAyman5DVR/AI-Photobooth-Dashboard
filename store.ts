@@ -30,7 +30,6 @@ const INITIAL_PROJECTS: Project[] = [
     createdAt: new Date().toISOString(),
     status: 'active',
     ownerId: 'u2',
-    cloudinaryCloudName: 'demo', // Sample for demonstration
     cloudinaryTag: 'wedding'
   }
 ];
@@ -56,5 +55,12 @@ export const initializeStore = () => {
   }
   if (!localStorage.getItem('pb_logs')) {
     setStoreData('pb_logs', []);
+  }
+  if (!localStorage.getItem('pb_settings')) {
+    setStoreData('pb_settings', {
+      cloudinaryCloudName: '',
+      cloudinaryApiKey: '',
+      cloudinaryApiSecret: ''
+    });
   }
 };

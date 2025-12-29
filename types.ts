@@ -49,3 +49,8 @@ export interface CloudinaryImage {
   type: string;
   created_at: string;
 }
+export interface GlobalSettings {
+  cloudinaryCloudName: string;
+  cloudinaryApiKey: string;
+  cloudinaryApiSecret: string;
+}

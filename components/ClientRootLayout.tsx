@@ -11,7 +11,8 @@ import {
     FolderKanban,
     LogOut,
     Zap,
-    Menu
+    Menu,
+    Settings
 } from 'lucide-react';
 import { AuthProvider, useAuth } from '@/components/AuthContext';
 
@@ -33,6 +34,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
         { label: 'Dashboard', icon: <LayoutDashboard size={20} />, path: '/', roles: [UserRole.ADMIN, UserRole.REGULAR] },
         { label: 'Projects', icon: <FolderKanban size={20} />, path: '/projects', roles: [UserRole.ADMIN, UserRole.REGULAR] },
         { label: 'User Management', icon: <Users size={20} />, path: '/users', roles: [UserRole.ADMIN] },
+        { label: 'Global Settings', icon: <Settings size={20} />, path: '/settings', roles: [UserRole.ADMIN] },
     ];
 
     useEffect(() => {
