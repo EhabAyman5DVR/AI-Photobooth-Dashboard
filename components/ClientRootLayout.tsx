@@ -43,7 +43,16 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
         }
     }, [loading, isAuthenticated, pathname, router]);
 
-    if (loading) return null;
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+                <div className="flex flex-col items-center gap-4">
+                    <Zap className="text-indigo-600 animate-pulse" size={48} fill="currentColor" />
+                    <p className="text-slate-500 font-medium animate-pulse">Initializing Dashboard...</p>
+                </div>
+            </div>
+        );
+    }
 
     if (pathname === '/login') {
         return <>{children}</>;

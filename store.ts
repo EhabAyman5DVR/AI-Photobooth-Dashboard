@@ -7,7 +7,6 @@ const INITIAL_USERS: User[] = [
     name: 'Super Admin',
     email: 'admin@photobooth.ai',
     role: UserRole.ADMIN,
-    password: 'password123',
     assignedProjectIds: []
   },
   {
@@ -15,7 +14,6 @@ const INITIAL_USERS: User[] = [
     name: 'Jane Doe',
     email: 'jane@example.com',
     role: UserRole.REGULAR,
-    password: 'password123',
     assignedProjectIds: ['p1']
   }
 ];
