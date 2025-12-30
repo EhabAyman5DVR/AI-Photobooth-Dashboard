@@ -97,21 +97,47 @@ export default function UserManagementPage() {
         }
     };
 
-    const handleRevokeAccess = async (email: string) => {
-        if (!confirm(`Are you sure you want to revoke access for ${email}? They will no longer be able to log in.`)) return;
+    const handleDeleteUser = async (email: string, profileId?: string) => {
+        const confirmMsg = profileId
+            ? `Are you sure? This will delete ${email}'s profile and revoke their login access. Projects they created will become ownerless.`
+            : `Are you sure you want to revoke access for ${email}?`;
 
+        if (!confirm(confirmMsg)) return;
+
+        setLoading(true);
         try {
-            const { error: deleteError } = await supabase
+            // 1. Remove from Whitelist
+            const { error: wError } = await supabase
                 .from('allowed_users')
                 .delete()
                 .eq('email', email);
+            if (wError) throw wError;
 
-            if (deleteError) throw deleteError;
+            // 2. If they have a profile, clean up
+            if (profileId) {
+                // Set projects to NULL owner instead of deleting them
+                const { error: pUpdateError } = await supabase
+                    .from('projects')
+                    .update({ created_by: null })
+                    .eq('created_by', profileId);
+
+                if (pUpdateError) console.warn('Could not detach projects:', pUpdateError);
+
+                // Delete the profile
+                const { error: pDeleteError } = await supabase
+                    .from('profiles')
+                    .delete()
+                    .eq('id', profileId);
+
+                if (pDeleteError) throw pDeleteError;
+            }
 
             fetchData();
-        } catch (err) {
-            console.error('Error revoking access:', err);
-            alert('Failed to revoke access.');
+        } catch (err: any) {
+            console.error('Error deleting user:', err);
+            alert(`Failed to delete user: ${err.message}`);
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -165,7 +191,8 @@ export default function UserManagementPage() {
                                         <tr>
                                             <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-widest">User</th>
                                             <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-widest">Role</th>
-                                            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Status</th>
+                                            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-widest text-center">Status</th>
+                                            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
@@ -192,11 +219,20 @@ export default function UserManagementPage() {
                                                         {p.role}
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4 text-right">
+                                                <td className="px-6 py-4 text-center">
                                                     <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-500 bg-emerald-50 px-2 py-1 rounded-lg">
                                                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                                                         Active
                                                     </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <button
+                                                        onClick={() => handleDeleteUser(p.email, p.id)}
+                                                        disabled={p.email === currentUser?.email}
+                                                        className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all disabled:opacity-0"
+                                                    >
+                                                        <Trash2 size={18} />
+                                                    </button>
                                                 </td>
                                             </tr>
                                         ))}
@@ -224,7 +260,7 @@ export default function UserManagementPage() {
                                         <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">{entry.role}</p>
                                     </div>
                                     <button
-                                        onClick={() => handleRevokeAccess(entry.email)}
+                                        onClick={() => handleDeleteUser(entry.email)}
                                         disabled={entry.email === currentUser.email}
                                         className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all opacity-0 group-hover:opacity-100 disabled:hidden"
                                     >
