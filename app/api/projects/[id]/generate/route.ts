@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// We use an admin client here because API calls from the booth 
-// usually won't have a user session.
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY! // We'll need the user to add this to .env.local
-);
+// Helper to get admin client safely
+const getAdminClient = () => {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!url || !key) {
+        throw new Error('Supabase admin credentials missing (URL or Service Role Key)');
+    }
+
+    return createClient(url, key);
+};
 
 export async function POST(
     request: NextRequest,
@@ -16,6 +21,7 @@ export async function POST(
 
     try {
         const amount = 1;
+        const supabase = getAdminClient();
 
         // 1. Create a log entry
         const { error: logError } = await supabase
