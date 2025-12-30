@@ -48,6 +48,7 @@ export default function ProjectDetailPage() {
         dailyLimit: 0,
         cloudinaryTag: ''
     });
+    const [isDeleting, setIsDeleting] = useState(false);
 
     const [isLoading, setIsLoading] = useState(true);
 
@@ -139,6 +140,32 @@ export default function ProjectDetailPage() {
             router.push('/projects');
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleDeleteProject = async () => {
+        if (!project) return;
+
+        const confirmed = window.confirm(
+            `Are you sure you want to permanently delete "${project.name}"?\nThis action cannot be undone.`
+        );
+
+        if (!confirmed) return;
+
+        setIsDeleting(true);
+        try {
+            const { error } = await supabase
+                .from('projects')
+                .delete()
+                .eq('id', project.id);
+
+            if (error) throw error;
+
+            router.push('/projects');
+        } catch (err) {
+            console.error('Delete error:', err);
+            alert('Failed to delete project. Please try again.');
+            setIsDeleting(false);
         }
     };
 
@@ -410,9 +437,13 @@ export default function ProjectDetailPage() {
                                 </div>
                             </div>
                             <div className="pt-4 border-t border-slate-100">
-                                <button className="w-full py-2 flex items-center justify-center gap-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors font-medium">
-                                    <Trash2 size={16} />
-                                    Archive Project
+                                <button
+                                    onClick={handleDeleteProject}
+                                    disabled={isDeleting}
+                                    className="w-full py-2 flex items-center justify-center gap-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors font-medium disabled:opacity-50"
+                                >
+                                    {isDeleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                                    {isDeleting ? 'Deleting...' : 'Delete Project'}
                                 </button>
                             </div>
                         </div>
