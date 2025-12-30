@@ -3,8 +3,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Project, UsageLog, UserRole, CloudinaryImage, GlobalSettings } from '@/types';
-import { getStoreData, setStoreData } from '@/store';
+import { Project, UsageLog, UserRole, CloudinaryImage } from '@/types';
+import { supabase } from '@/utils/supabase';
 import {
     ArrowLeft,
     Settings,
@@ -20,7 +20,8 @@ import {
     Image as ImageIcon,
     ExternalLink,
     Download,
-    Info
+    Info,
+    Loader2
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthContext';
 
@@ -48,63 +49,121 @@ export default function ProjectDetailPage() {
         cloudinaryTag: ''
     });
 
+    const [isLoading, setIsLoading] = useState(true);
+
     useEffect(() => {
         setOrigin(window.location.origin);
     }, []);
 
     useEffect(() => {
         if (!user || !id) return;
+        fetchProjectData();
+    }, [id, user]);
 
-        const projects = getStoreData<Project[]>('pb_projects', []);
-        const found = projects.find(p => p.id === id);
-        if (!found) {
+    const fetchProjectData = async () => {
+        setIsLoading(true);
+        try {
+            const { data: p, error } = await supabase
+                .from('projects')
+                .select('*')
+                .eq('id', id)
+                .single();
+
+            if (error) throw error;
+            if (!p) {
+                router.push('/projects');
+                return;
+            }
+
+            // Fallback for Cloudinary settings
+            let finalCloudName = p.cloudinary_cloud_name;
+            let finalApiKey = p.cloudinary_api_key;
+            let finalApiSecret = p.cloudinary_api_secret;
+
+            if (!finalCloudName) {
+                const { data: globalSettings } = await supabase
+                    .from('global_settings')
+                    .select('*')
+                    .eq('id', 'current')
+                    .single();
+
+                if (globalSettings) {
+                    finalCloudName = globalSettings.cloudinary_cloud_name;
+                    finalApiKey = globalSettings.cloudinary_api_key;
+                    finalApiSecret = globalSettings.cloudinary_api_secret;
+                }
+            }
+
+            const mapped: Project = {
+                id: p.id,
+                name: p.name,
+                description: p.description || '',
+                dailyLimit: p.max_usage || 0,
+                currentGenerations: p.total_usage || 0,
+                createdAt: p.created_at,
+                ownerId: p.created_by || '',
+                status: p.is_active ? ((p.total_usage || 0) >= (p.max_usage || 0) ? 'exhausted' : 'active') : 'paused',
+                cloudinaryCloudName: finalCloudName,
+                cloudinaryTag: p.cloudinary_tag,
+                cloudinaryApiKey: finalApiKey,
+                cloudinaryApiSecret: finalApiSecret
+            };
+
+            setProject(mapped);
+            setEditForm({
+                name: mapped.name,
+                description: mapped.description,
+                dailyLimit: mapped.dailyLimit,
+                cloudinaryTag: mapped.cloudinaryTag || ''
+            });
+
+            // Fetch Logs
+            const { data: logsData } = await supabase
+                .from('usage_logs')
+                .select('*')
+                .eq('project_id', id)
+                .order('timestamp', { ascending: false });
+
+            setLogs((logsData || []).map(l => ({
+                id: l.id,
+                projectId: l.project_id,
+                timestamp: l.timestamp,
+                amount: l.amount
+            })));
+
+            if (mapped.cloudinaryTag) {
+                fetchImages(mapped.cloudinaryTag, mapped, false);
+            }
+        } catch (err) {
+            console.error('Error fetching project:', err);
             router.push('/projects');
-            return;
+        } finally {
+            setIsLoading(false);
         }
+    };
 
-        if (user.role === UserRole.REGULAR && !user.assignedProjectIds.includes(found.id)) {
-            router.push('/projects');
-            return;
-        }
-
-        setProject(found);
-        setEditForm({
-            name: found.name,
-            description: found.description,
-            dailyLimit: found.dailyLimit,
-            cloudinaryTag: found.cloudinaryTag || ''
-        });
-
-        const allLogs = getStoreData<UsageLog[]>('pb_logs', []);
-        setLogs(allLogs.filter(l => l.projectId === id).reverse());
-
-        if (found.cloudinaryTag) {
-            fetchImages(found.cloudinaryTag, found, false);
-        }
-    }, [id, user, router]);
-
-    const handleUpdateProject = (e: React.FormEvent) => {
+    const handleUpdateProject = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!project) return;
 
-        const projects = getStoreData<Project[]>('pb_projects', []);
-        const updatedProjects = projects.map(p => {
-            if (p.id === project.id) {
-                return {
-                    ...p,
-                    ...editForm
-                };
-            }
-            return p;
-        });
+        try {
+            const { error } = await supabase
+                .from('projects')
+                .update({
+                    name: editForm.name,
+                    description: editForm.description,
+                    max_usage: editForm.dailyLimit,
+                    cloudinary_tag: editForm.cloudinaryTag
+                })
+                .eq('id', project.id);
 
-        setStoreData('pb_projects', updatedProjects);
-        const updatedProject = updatedProjects.find(p => p.id === project.id) || null;
-        setProject(updatedProject);
-        setShowEditModal(false);
+            if (error) throw error;
 
-        if (updatedProject?.cloudinaryTag) {
-            fetchImages(updatedProject.cloudinaryTag, updatedProject, false);
+            await fetchProjectData();
+            setShowEditModal(false);
+        } catch (err) {
+            console.error('Update error:', err);
+            alert('Failed to update project');
         }
     };
 
@@ -148,47 +207,37 @@ export default function ProjectDetailPage() {
         }
     };
 
-    const handleSimulateApiCall = () => {
+    const handleSimulateApiCall = async () => {
         if (!project || isSimulating) return;
         setIsSimulating(true);
 
-        setTimeout(() => {
+        try {
             const amount = 1;
-            const projects = getStoreData<Project[]>('pb_projects', []);
-            const updatedProjects = projects.map(p => {
-                if (p.id === project.id) {
-                    const newGen = p.currentGenerations + amount;
-                    return {
-                        ...p,
-                        currentGenerations: newGen,
-                        status: newGen >= p.dailyLimit ? 'exhausted' : p.status
-                    };
-                }
-                return p;
+
+            // 1. Create a log entry
+            const { error: logError } = await supabase
+                .from('usage_logs')
+                .insert([{ project_id: project.id, amount }]);
+
+            if (logError) throw logError;
+
+            // 2. Increment project total_usage
+            const { error: updateError } = await supabase.rpc('increment_project_usage', {
+                p_id: project.id,
+                p_amount: amount
             });
 
-            const newLog: UsageLog = {
-                id: `log-${Date.now()}`,
-                projectId: project.id,
-                timestamp: new Date().toISOString(),
-                amount
-            };
+            if (updateError) throw updateError;
 
-            const allLogs = getStoreData<UsageLog[]>('pb_logs', []);
-            const updatedLogs = [newLog, ...allLogs];
+            // Refresh UI
+            await fetchProjectData();
 
-            setStoreData('pb_projects', updatedProjects);
-            setStoreData('pb_logs', updatedLogs);
-
-            const latestProject = updatedProjects.find(p => p.id === id) || null;
-            setProject(latestProject);
-            setLogs(updatedLogs.filter(l => l.projectId === id).reverse());
+        } catch (err) {
+            console.error('Simulation error:', err);
+            alert('Simulation failed. Did you create the increment_project_usage function?');
+        } finally {
             setIsSimulating(false);
-
-            if (latestProject) {
-                fetchImages(latestProject.cloudinaryTag, latestProject, false);
-            }
-        }, 800);
+        }
     };
 
     const copyToClipboard = (text: string) => {
@@ -197,7 +246,16 @@ export default function ProjectDetailPage() {
         setTimeout(() => setCopied(false), 2000);
     };
 
-    if (!project || !user) return null;
+    if (isLoading || !project || !user) {
+        return (
+            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+                <div className="flex flex-col items-center gap-4">
+                    <Loader2 className="animate-spin text-indigo-600" size={48} />
+                    <p className="text-slate-500 font-medium tracking-wide">Fetching project details...</p>
+                </div>
+            </div>
+        );
+    }
 
     const usagePercent = (project.currentGenerations / project.dailyLimit) * 100;
 
@@ -379,7 +437,7 @@ export default function ProjectDetailPage() {
                             className="flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-slate-100 rounded-xl text-slate-600 text-sm font-bold transition-all"
                         >
                             <RefreshCw size={16} className={loadingImages ? 'animate-spin' : ''} />
-                            Sync Gallery
+                            Refresh Images
                         </button>
                     </div>
 

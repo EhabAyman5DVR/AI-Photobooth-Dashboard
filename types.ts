@@ -17,15 +17,28 @@ export interface Project {
   id: string;
   name: string;
   description: string;
+  createdAt: string;
+  ownerId: string;
+  // Stats
   dailyLimit: number;
   currentGenerations: number;
-  createdAt: string;
+  max_usage?: number; // Supabase map
+  total_usage?: number; // Supabase map
+  // Status
   status: 'active' | 'paused' | 'exhausted';
-  ownerId: string;
+  is_active?: boolean; // Supabase map
+  // Cloudinary
   cloudinaryCloudName?: string;
   cloudinaryTag?: string;
   cloudinaryApiKey?: string;
   cloudinaryApiSecret?: string;
+  // Supabase Snake Case Mappings
+  cloudinary_cloud_name?: string;
+  cloudinary_api_key?: string;
+  cloudinary_api_secret?: string;
+  cloudinary_tag?: string;
+  created_at?: string;
+  created_by?: string;
 }
 
 export interface UsageLog {

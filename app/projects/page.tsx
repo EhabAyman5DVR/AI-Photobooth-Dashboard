@@ -2,10 +2,10 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { User, Project, UserRole } from '@/types';
-import { getStoreData, setStoreData } from '@/store';
+import { Project, UserRole, User } from '@/types';
+import { supabase } from '@/utils/supabase';
 import Link from 'next/link';
-import { Plus, Search, ExternalLink, Image as ImageIcon } from 'lucide-react';
+import { Plus, Search, ExternalLink, Image as ImageIcon, Loader2, FolderKanban } from 'lucide-react';
 import { useAuth } from '@/components/AuthContext';
 
 export default function ProjectListPage() {
@@ -24,18 +24,118 @@ export default function ProjectListPage() {
 
     const [projects, setProjects] = useState<Project[]>([]);
     const [users, setUsers] = useState<User[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
-        setProjects(getStoreData<Project[]>('pb_projects', []));
-        setUsers(getStoreData<User[]>('pb_users', []));
-    }, []);
+        if (user) {
+            fetchData();
+        }
+    }, [user]);
+
+    const fetchData = async () => {
+        setIsLoading(true);
+        try {
+            // Fetch Projects
+            const { data: projectsData, error: pError } = await supabase
+                .from('projects')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (pError) throw pError;
+
+            // Map Snake Case to Camel Case for the interface
+            const mappedProjects: Project[] = (projectsData || []).map(p => ({
+                id: p.id,
+                name: p.name,
+                description: p.description || '',
+                dailyLimit: p.max_usage || 0,
+                currentGenerations: p.total_usage || 0,
+                createdAt: p.created_at,
+                ownerId: p.created_by || '',
+                status: p.is_active ? ((p.total_usage || 0) >= (p.max_usage || 0) ? 'exhausted' : 'active') : 'paused',
+                cloudinaryCloudName: p.cloudinary_cloud_name,
+                cloudinaryTag: p.cloudinary_tag,
+                cloudinaryApiKey: p.cloudinary_api_key,
+                cloudinaryApiSecret: p.cloudinary_api_secret
+            }));
+
+            setProjects(mappedProjects);
+
+            // Fetch Users (for assignment)
+            const { data: userData, error: uError } = await supabase
+                .from('profiles')
+                .select('*')
+                .order('full_name', { ascending: true });
+
+            if (uError) throw uError;
+
+            setUsers((userData || []).map(u => ({
+                id: u.id,
+                name: u.full_name || u.email,
+                email: u.email,
+                role: u.role as UserRole,
+                assignedProjectIds: [] // This will need project_members table later
+            })));
+
+        } catch (err) {
+            console.error('Error fetching data:', err);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleCreateProject = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsSaving(true);
+
+        try {
+            // Ensure ownerId is null if empty, otherwise UUID foreign key will fail
+            const ownerId = newProject.ownerId && newProject.ownerId !== "" ? newProject.ownerId : user?.id;
+
+            const projectData = {
+                name: newProject.name.trim(),
+                description: newProject.description.trim(),
+                max_usage: newProject.dailyLimit || 1000,
+                cloudinary_tag: newProject.cloudinaryTag.trim(),
+                created_by: ownerId,
+                is_active: true
+            };
+
+            console.log('🚀 Supabase: Creating project with payload:', projectData);
+
+            const { data, error } = await supabase
+                .from('projects')
+                .insert([projectData])
+                .select()
+                .single();
+
+            if (error) {
+                console.error('❌ Supabase Insert Error:', error);
+                throw new Error(error.message || 'Database rejected the request (400)');
+            }
+
+            // Refresh list
+            await fetchData();
+            setShowModal(false);
+            setNewProject({ name: '', description: '', dailyLimit: 1000, ownerId: '', cloudinaryTag: '' });
+        } catch (err: any) {
+            console.error('Error creating project:', err);
+            alert(`Project Creation Failed: ${err.message}`);
+        } finally {
+            setIsSaving(false);
+        }
+    };
 
     const filteredProjects = useMemo(() => {
         if (!user) return [];
         let result = projects;
+
+        // Basic filtering for projects - in a real app, we would use project_members
         if (user.role === UserRole.REGULAR) {
-            result = projects.filter(p => user.assignedProjectIds.includes(p.id));
+            result = projects.filter(p => p.ownerId === user.id);
         }
+
         if (searchTerm) {
             result = result.filter(p =>
                 p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -44,39 +144,6 @@ export default function ProjectListPage() {
         }
         return result;
     }, [projects, user, searchTerm]);
-
-    const handleCreateProject = (e: React.FormEvent) => {
-        e.preventDefault();
-        const id = `p-${Date.now()}`;
-        const project: Project = {
-            ...newProject,
-            id,
-            currentGenerations: 0,
-            createdAt: new Date().toISOString(),
-            status: 'active',
-            ownerId: newProject.ownerId || (user?.id || '')
-        };
-
-        const updatedProjects = [...projects, project];
-        setProjects(updatedProjects);
-        setStoreData('pb_projects', updatedProjects);
-
-        // If assigned to a user, update user's assigned projects
-        if (newProject.ownerId) {
-            const allUsers = getStoreData<User[]>('pb_users', []);
-            const updatedUsers = allUsers.map(u => {
-                if (u.id === newProject.ownerId) {
-                    return { ...u, assignedProjectIds: [...u.assignedProjectIds, id] };
-                }
-                return u;
-            });
-            setStoreData('pb_users', updatedUsers);
-            setUsers(updatedUsers);
-        }
-
-        setShowModal(false);
-        setNewProject({ name: '', description: '', dailyLimit: 1000, ownerId: '', cloudinaryTag: '' });
-    };
 
     if (!user) return null;
 
@@ -105,42 +172,57 @@ export default function ProjectListPage() {
                 )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredProjects.map((project) => (
-                    <Link
-                        key={project.id}
-                        href={`/projects/${project.id}`}
-                        className="group bg-white p-6 rounded-2xl border border-slate-200 hover:border-indigo-500 hover:shadow-xl transition-all duration-300 flex flex-col"
-                    >
-                        <div className="flex items-center justify-between mb-4">
-                            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md ${project.status === 'active' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-600'
-                                }`}>
-                                {project.status}
-                            </span>
-                            <ExternalLink size={18} className="text-slate-300 group-hover:text-indigo-500" />
-                        </div>
-
-                        <h3 className="text-lg font-bold text-slate-800 mb-2 group-hover:text-indigo-600">{project.name}</h3>
-                        <p className="text-sm text-slate-500 mb-6 flex-1 line-clamp-2">{project.description}</p>
-
-                        <div className="space-y-3">
-                            <div className="flex items-center justify-between text-xs font-medium">
-                                <span className="text-slate-400 flex items-center gap-1">
-                                    <ImageIcon size={14} /> Usage
+            {isLoading ? (
+                <div className="flex flex-col items-center justify-center p-20 bg-white rounded-3xl border border-slate-100 text-slate-400">
+                    <Loader2 className="animate-spin mb-4" size={48} />
+                    <p className="font-medium">Loading your projects...</p>
+                </div>
+            ) : filteredProjects.length === 0 ? (
+                <div className="flex flex-col items-center justify-center p-20 bg-white rounded-3xl border border-slate-100 text-slate-400 text-center">
+                    <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
+                        <FolderKanban size={32} />
+                    </div>
+                    <p className="font-medium text-slate-600">No projects found</p>
+                    <p className="text-sm">Try a different search or create your first project.</p>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {filteredProjects.map((project) => (
+                        <Link
+                            key={project.id}
+                            href={`/projects/${project.id}`}
+                            className="group bg-white p-6 rounded-2xl border border-slate-200 hover:border-indigo-500 hover:shadow-xl transition-all duration-300 flex flex-col"
+                        >
+                            <div className="flex items-center justify-between mb-4">
+                                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md ${project.status === 'active' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-600'
+                                    }`}>
+                                    {project.status}
                                 </span>
-                                <span className="text-slate-800">{project.currentGenerations} / {project.dailyLimit}</span>
+                                <ExternalLink size={18} className="text-slate-300 group-hover:text-indigo-500" />
                             </div>
-                            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                                <div
-                                    className={`h-full transition-all duration-1000 ${(project.currentGenerations / project.dailyLimit) > 0.9 ? 'bg-amber-500' : 'bg-indigo-500'
-                                        }`}
-                                    style={{ width: `${Math.min(100, (project.currentGenerations / project.dailyLimit) * 100)}%` }}
-                                />
+
+                            <h3 className="text-lg font-bold text-slate-800 mb-2 group-hover:text-indigo-600">{project.name}</h3>
+                            <p className="text-sm text-slate-500 mb-6 flex-1 line-clamp-2">{project.description}</p>
+
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between text-xs font-medium">
+                                    <span className="text-slate-400 flex items-center gap-1">
+                                        <ImageIcon size={14} /> Usage
+                                    </span>
+                                    <span className="text-slate-800">{project.currentGenerations} / {project.dailyLimit}</span>
+                                </div>
+                                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                                    <div
+                                        className={`h-full transition-all duration-1000 ${(project.currentGenerations / project.dailyLimit) > 0.9 ? 'bg-amber-500' : 'bg-indigo-500'
+                                            }`}
+                                        style={{ width: `${Math.min(100, (project.currentGenerations / project.dailyLimit) * 100)}%` }}
+                                    />
+                                </div>
                             </div>
-                        </div>
-                    </Link>
-                ))}
-            </div>
+                        </Link>
+                    ))}
+                </div>
+            )}
 
             {showModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
@@ -221,9 +303,11 @@ export default function ProjectListPage() {
                                 </button>
                                 <button
                                     type="submit"
-                                    className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
+                                    disabled={isSaving}
+                                    className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200 flex items-center justify-center gap-2"
                                 >
-                                    Create Project
+                                    {isSaving ? <Loader2 className="animate-spin" size={20} /> : null}
+                                    {isSaving ? 'Creating...' : 'Create Project'}
                                 </button>
                             </div>
                         </form>
