@@ -13,6 +13,17 @@ const getAdminClient = () => {
     return createClient(url, key);
 };
 
+// Helper to add CORS headers
+const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+export async function OPTIONS() {
+    return NextResponse.json({}, { headers: corsHeaders });
+}
+
 export async function POST(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
@@ -43,12 +54,18 @@ export async function POST(
             projectId: id,
             incrementedBy: amount,
             timestamp: new Date().toISOString()
-        }, { status: 200 });
+        }, {
+            status: 200,
+            headers: corsHeaders
+        });
     } catch (error: any) {
         console.error('API Generation Error:', error);
         return NextResponse.json({
             success: false,
             message: error.message || 'Failed to increment generation count'
-        }, { status: 500 });
+        }, {
+            status: 500,
+            headers: corsHeaders
+        });
     }
 }
