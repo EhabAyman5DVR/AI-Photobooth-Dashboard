@@ -317,18 +317,20 @@ export default function ProjectDetailPage() {
                     >
                         Generated Images
                     </button>
-                    <button
-                        onClick={() => setActiveTab('logs')}
-                        className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'logs' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        API Logs
-                    </button>
+                    {user.role === UserRole.ADMIN && (
+                        <button
+                            onClick={() => setActiveTab('logs')}
+                            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'logs' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                            API Logs
+                        </button>
+                    )}
                 </div>
             </div>
 
             {activeTab === 'overview' && (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    <div className="lg:col-span-2 space-y-8">
+                <div className={`grid grid-cols-1 ${user.role === UserRole.ADMIN ? 'lg:grid-cols-3' : 'max-w-4xl mx-auto'} gap-8`}>
+                    <div className={user.role === UserRole.ADMIN ? 'lg:col-span-2 space-y-8' : 'space-y-8'}>
                         <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
                             <div className="absolute top-0 right-0 p-8 opacity-5">
                                 <Zap size={120} />
@@ -361,93 +363,97 @@ export default function ProjectDetailPage() {
                             </div>
                         </div>
 
-                        <div className="bg-slate-900 rounded-2xl p-8 text-white shadow-xl shadow-slate-200">
-                            <div className="flex items-center justify-between mb-6">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-indigo-500/20 rounded-lg text-indigo-400">
-                                        <Cpu size={24} />
+                        {user.role === UserRole.ADMIN && (
+                            <div className="bg-slate-900 rounded-2xl p-8 text-white shadow-xl shadow-slate-200">
+                                <div className="flex items-center justify-between mb-6">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-indigo-500/20 rounded-lg text-indigo-400">
+                                            <Cpu size={24} />
+                                        </div>
+                                        <h3 className="text-xl font-bold">API Integration</h3>
                                     </div>
-                                    <h3 className="text-xl font-bold">API Integration</h3>
+                                    <button
+                                        onClick={handleSimulateApiCall}
+                                        disabled={isSimulating || project.status === 'exhausted'}
+                                        className={`flex items-center gap-2 px-6 py-2 rounded-xl font-bold transition-all ${isSimulating || project.status === 'exhausted'
+                                            ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                                            : 'bg-white text-slate-900 hover:bg-indigo-50 active:scale-95 shadow-lg shadow-white/10'
+                                            }`}
+                                    >
+                                        {isSimulating ? <RefreshCw className="animate-spin" size={18} /> : <Play size={18} />}
+                                        {isSimulating ? 'Sending Request...' : 'Simulate API Call'}
+                                    </button>
                                 </div>
-                                <button
-                                    onClick={handleSimulateApiCall}
-                                    disabled={isSimulating || project.status === 'exhausted'}
-                                    className={`flex items-center gap-2 px-6 py-2 rounded-xl font-bold transition-all ${isSimulating || project.status === 'exhausted'
-                                        ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                                        : 'bg-white text-slate-900 hover:bg-indigo-50 active:scale-95 shadow-lg shadow-white/10'
-                                        }`}
-                                >
-                                    {isSimulating ? <RefreshCw className="animate-spin" size={18} /> : <Play size={18} />}
-                                    {isSimulating ? 'Sending Request...' : 'Simulate API Call'}
-                                </button>
-                            </div>
-                            <p className="text-slate-400 mb-6 text-sm">
-                                Use the endpoint below to increment image generation counts. Every request updates Cloudinary project usage.
-                            </p>
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Endpoint URL</label>
-                                    <div className="flex items-center gap-2 bg-slate-800 p-3 rounded-xl border border-slate-700">
-                                        <code className="text-indigo-400 text-sm flex-1 truncate">
-                                            {origin}/api/projects/{project.id}/generate
-                                        </code>
-                                        <button
-                                            onClick={() => copyToClipboard(`${origin}/api/projects/${project.id}/generate`)}
-                                            className="p-2 hover:bg-slate-700 rounded-lg transition-colors text-slate-400"
-                                        >
-                                            {copied ? <Check size={18} className="text-emerald-500" /> : <Copy size={18} />}
-                                        </button>
+                                <p className="text-slate-400 mb-6 text-sm">
+                                    Use the endpoint below to increment image generation counts. Every request updates Cloudinary project usage.
+                                </p>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Endpoint URL</label>
+                                        <div className="flex items-center gap-2 bg-slate-800 p-3 rounded-xl border border-slate-700">
+                                            <code className="text-indigo-400 text-sm flex-1 truncate">
+                                                {origin}/api/projects/{project.id}/generate
+                                            </code>
+                                            <button
+                                                onClick={() => copyToClipboard(`${origin}/api/projects/${project.id}/generate`)}
+                                                className="p-2 hover:bg-slate-700 rounded-lg transition-colors text-slate-400"
+                                            >
+                                                {copied ? <Check size={18} className="text-emerald-500" /> : <Copy size={18} />}
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                        )}
                     </div>
 
-                    <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6">
-                        <div className="flex items-center justify-between">
-                            <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                                <Settings size={18} className="text-slate-400" />
-                                Project Settings
-                            </h3>
-                            <button
-                                onClick={() => setShowEditModal(true)}
-                                className="text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 px-3 py-1 rounded-lg transition-colors"
-                            >
-                                Edit
-                            </button>
-                        </div>
-                        <div className="space-y-4">
-                            <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                                <p className="text-xs font-bold text-slate-400 uppercase mb-2">Cloudinary Cloud</p>
-                                <p className="font-medium text-slate-700">{project.cloudinaryCloudName || 'Managed via Global Settings'}</p>
-                            </div>
-                            <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                                <p className="text-xs font-bold text-slate-400 uppercase mb-2">Tag / Folder Path</p>
-                                <p className="font-medium text-slate-700">{project.cloudinaryTag || 'Not set'}</p>
-                            </div>
-                            <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                                <p className="text-xs font-bold text-slate-400 uppercase mb-2">API Security</p>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100 uppercase">
-                                        SDK Protected
-                                    </span>
-                                    <span className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
-                                        Supabase Secure
-                                    </span>
-                                </div>
-                            </div>
-                            <div className="pt-4 border-t border-slate-100">
+                    {user.role === UserRole.ADMIN && (
+                        <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6">
+                            <div className="flex items-center justify-between">
+                                <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                                    <Settings size={18} className="text-slate-400" />
+                                    Project Settings
+                                </h3>
                                 <button
-                                    onClick={handleDeleteProject}
-                                    disabled={isDeleting}
-                                    className="w-full py-2 flex items-center justify-center gap-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors font-medium disabled:opacity-50"
+                                    onClick={() => setShowEditModal(true)}
+                                    className="text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 px-3 py-1 rounded-lg transition-colors"
                                 >
-                                    {isDeleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
-                                    {isDeleting ? 'Deleting...' : 'Delete Project'}
+                                    Edit
                                 </button>
                             </div>
+                            <div className="space-y-4">
+                                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                                    <p className="text-xs font-bold text-slate-400 uppercase mb-2">Cloudinary Cloud</p>
+                                    <p className="font-medium text-slate-700">{project.cloudinaryCloudName || 'Managed via Global Settings'}</p>
+                                </div>
+                                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                                    <p className="text-xs font-bold text-slate-400 uppercase mb-2">Tag / Folder Path</p>
+                                    <p className="font-medium text-slate-700">{project.cloudinaryTag || 'Not set'}</p>
+                                </div>
+                                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                                    <p className="text-xs font-bold text-slate-400 uppercase mb-2">API Security</p>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100 uppercase">
+                                            SDK Protected
+                                        </span>
+                                        <span className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                                            Supabase Secure
+                                        </span>
+                                    </div>
+                                </div>
+                                <div className="pt-4 border-t border-slate-100">
+                                    <button
+                                        onClick={handleDeleteProject}
+                                        disabled={isDeleting}
+                                        className="w-full py-2 flex items-center justify-center gap-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors font-medium disabled:opacity-50"
+                                    >
+                                        {isDeleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                                        {isDeleting ? 'Deleting...' : 'Delete Project'}
+                                    </button>
+                                </div>
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </div>
             )}
 
@@ -552,50 +558,49 @@ export default function ProjectDetailPage() {
                 </div>
             )}
 
-            {
-                activeTab === 'logs' && (
-                    <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
-                        <div className="flex items-center justify-between mb-8">
-                            <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                                <History className="text-indigo-500" />
-                                API Access Logs
-                            </h3>
-                            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest bg-slate-50 px-3 py-1 rounded-full">
-                                Real-time feed
-                            </span>
-                        </div>
-                        <div className="space-y-4">
-                            {logs.map(log => (
-                                <div key={log.id} className="flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-100 group hover:bg-white hover:shadow-md transition-all">
-                                    <div className="flex items-center gap-4">
-                                        <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-emerald-500 border border-slate-100 shadow-sm group-hover:scale-110 transition-transform">
-                                            <Zap size={18} fill="currentColor" />
-                                        </div>
-                                        <div>
-                                            <p className="text-sm font-bold text-slate-800">Image Generation Increment (+{log.amount})</p>
-                                            <p className="text-xs text-slate-500">{new Date(log.timestamp).toLocaleString()} • Successful Request</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded border border-emerald-100">
-                                            HTTP 200 OK
-                                        </span>
-                                        <div className="h-4 w-[1px] bg-slate-200 hidden md:block" />
-                                        <span className="text-[10px] text-slate-400 font-mono hidden md:block">
-                                            ref: {log.id.split('-')[1]}
-                                        </span>
-                                    </div>
-                                </div>
-                            ))}
-                            {logs.length === 0 && (
-                                <div className="flex flex-col items-center justify-center py-20 text-slate-300">
-                                    <Activity size={48} className="opacity-20 mb-4" />
-                                    <p className="font-medium">No activity detected for this project yet</p>
-                                </div>
-                            )}
-                        </div>
+            {user.role === UserRole.ADMIN && activeTab === 'logs' && (
+                <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
+                    <div className="flex items-center justify-between mb-8">
+                        <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                            <History className="text-indigo-500" />
+                            API Access Logs
+                        </h3>
+                        <span className="text-xs font-bold text-slate-400 uppercase tracking-widest bg-slate-50 px-3 py-1 rounded-full">
+                            Real-time feed
+                        </span>
                     </div>
-                )
+                    <div className="space-y-4">
+                        {logs.map(log => (
+                            <div key={log.id} className="flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-100 group hover:bg-white hover:shadow-md transition-all">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-emerald-500 border border-slate-100 shadow-sm group-hover:scale-110 transition-transform">
+                                        <Zap size={18} fill="currentColor" />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-bold text-slate-800">Image Generation Increment (+{log.amount})</p>
+                                        <p className="text-xs text-slate-500">{new Date(log.timestamp).toLocaleString()} • Successful Request</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded border border-emerald-100">
+                                        HTTP 200 OK
+                                    </span>
+                                    <div className="h-4 w-[1px] bg-slate-200 hidden md:block" />
+                                    <span className="text-[10px] text-slate-400 font-mono hidden md:block">
+                                        ref: {log.id.split('-')[1]}
+                                    </span>
+                                </div>
+                            </div>
+                        ))}
+                        {logs.length === 0 && (
+                            <div className="flex flex-col items-center justify-center py-20 text-slate-300">
+                                <Activity size={48} className="opacity-20 mb-4" />
+                                <p className="font-medium">No activity detected for this project yet</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )
             }
             {
                 showEditModal && (
