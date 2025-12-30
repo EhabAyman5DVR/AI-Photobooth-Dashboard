@@ -22,38 +22,88 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [session, setSession] = useState<Session | null>(null);
     const [loading, setLoading] = useState(true);
 
+    const isResolving = React.useRef(false);
+
     useEffect(() => {
-        // Get initial session
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setSession(session);
-            if (session) {
-                fetchUserProfile(session);
-            } else {
-                setLoading(false);
+        let mounted = true;
+
+        const initializeAuth = async (isRetry = false) => {
+            if (isResolving.current && !isRetry) return;
+            isResolving.current = true;
+
+            try {
+                console.log('🔄 Auth: Initializing session...');
+                const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
+
+                if (sessionError) throw sessionError;
+                if (!mounted) return;
+
+                setSession(currentSession);
+                if (currentSession) {
+                    await fetchUserProfile(currentSession);
+                } else {
+                    setLoading(false);
+                }
+            } catch (err) {
+                console.error('❌ Auth: Initialization error:', err);
+                if (mounted) setLoading(false);
+            } finally {
+                isResolving.current = false;
             }
-        });
+        };
 
         // Listen for auth changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-            setSession(session);
-            if (session) {
-                await fetchUserProfile(session);
-            } else {
-                setUser(null);
-                setLoading(false);
-            }
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+            if (!mounted) return;
+            console.log('🔑 Auth event:', event);
+
+            // Only trigger a new profile fetch if the session actually changed
+            setSession(prev => {
+                if (session?.user.id !== prev?.user.id || event === 'SIGNED_IN') {
+                    if (session) fetchUserProfile(session);
+                    else {
+                        setUser(null);
+                        setLoading(false);
+                    }
+                }
+                return session;
+            });
         });
 
-        return () => subscription.unsubscribe();
+        // Wake up connection when tab becomes visible
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                console.log('☀️ Tab visible - verifying connection...');
+                initializeAuth();
+            }
+        };
+
+        initializeAuth();
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            mounted = false;
+            subscription.unsubscribe();
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
     }, []);
 
-    const fetchUserProfile = async (session: Session, retryCount = 0) => {
+    const fetchUserProfile = async (session: Session) => {
         try {
-            const { data, error } = await supabase
+            console.log('👤 Auth: Fetching profile for', session.user.email);
+
+            // TIMEOUT: Don't wait more than 4 seconds for the profile
+            const fetchPromise = supabase
                 .from('profiles')
                 .select('*')
                 .eq('id', session.user.id)
                 .single();
+
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Profile fetch timed out')), 4000)
+            );
+
+            const { data, error } = await Promise.race([fetchPromise, timeoutPromise]) as any;
 
             if (data) {
                 setUser({
@@ -63,21 +113,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     role: (data.role as UserRole) || UserRole.REGULAR,
                     assignedProjectIds: []
                 });
-                setLoading(false);
-            } else if (retryCount < 3) {
-                // If profile not found, wait 1 second and retry (gives trigger time to finish)
-                console.log(`Profile not found, retrying... (${retryCount + 1})`);
-                setTimeout(() => fetchUserProfile(session, retryCount + 1), 1000);
+                console.log('✅ Auth: Profile loaded');
             } else {
-                setLoading(false);
+                console.warn('⚠️ Auth: Profile not found. This user might not be in allowed_users.');
+                setUser(null);
             }
         } catch (error) {
-            console.error('Error fetching profile:', error);
-            if (retryCount < 3) {
-                setTimeout(() => fetchUserProfile(session, retryCount + 1), 1000);
-            } else {
-                setLoading(false);
-            }
+            console.error('❌ Auth: Profile fetch failed:', error);
+            // On error, we keep user as null so the UI can show a Retry or Change Account button
+        } finally {
+            setLoading(false);
         }
     };
 

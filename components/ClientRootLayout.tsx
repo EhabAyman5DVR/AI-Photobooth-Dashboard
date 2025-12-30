@@ -58,7 +58,43 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
         return <>{children}</>;
     }
 
-    if (!isAuthenticated || !user) return null;
+    if (!isAuthenticated) return null;
+
+    if (!isAuthenticated) return null;
+
+    if (!user) {
+        return (
+            <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 text-center">
+                <div className="max-w-md w-full bg-white p-8 rounded-3xl border border-slate-200 shadow-sm animate-in fade-in zoom-in-95 duration-300">
+                    <div className="w-16 h-16 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Users size={32} />
+                    </div>
+                    <h2 className="text-xl font-bold text-slate-800 mb-2">Access Verification</h2>
+                    <p className="text-slate-500 text-sm mb-6 leading-relaxed">
+                        We found your account, but couldn't verify your dashboard permissions.
+                        This can happen if you are not authorized, or if your connection timed out while switching tabs.
+                    </p>
+                    <div className="space-y-3">
+                        <button
+                            onClick={() => window.location.reload()}
+                            className="w-full py-3 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all active:scale-95 shadow-lg shadow-indigo-100"
+                        >
+                            Retry Connection
+                        </button>
+                        <button
+                            onClick={logout}
+                            className="w-full py-3 bg-white text-slate-600 border border-slate-200 rounded-2xl font-bold hover:bg-slate-50 transition-all active:scale-95"
+                        >
+                            Sign in with Different Email
+                        </button>
+                    </div>
+                    <p className="mt-6 text-[10px] text-slate-400 uppercase tracking-widest font-bold">
+                        Environment: Production
+                    </p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="flex h-screen bg-slate-50 overflow-hidden">
