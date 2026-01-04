@@ -27,6 +27,7 @@ import {
     UserMinus,
     Search
 } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '@/components/AuthContext';
 
 export default function ProjectDetailPage() {
@@ -329,6 +330,30 @@ export default function ProjectDetailPage() {
         setTimeout(() => setCopied(false), 2000);
     };
 
+    const chartData = useMemo(() => {
+        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const last7Days = [];
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            last7Days.push({
+                name: days[d.getDay()],
+                dateStr: d.toISOString().split('T')[0],
+                count: 0
+            });
+        }
+
+        logs.forEach(log => {
+            const logDate = log.timestamp.split('T')[0];
+            const dayEntry = last7Days.find(d => d.dateStr === logDate);
+            if (dayEntry) {
+                dayEntry.count += log.amount;
+            }
+        });
+
+        return last7Days;
+    }, [logs]);
+
     if (isLoading || !project || !user) {
         return (
             <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -416,6 +441,29 @@ export default function ProjectDetailPage() {
                                     <span className="text-slate-500 font-medium">{Math.floor(usagePercent)}% capacity used</span>
                                     <span className="text-slate-800 font-bold">{project.dailyLimit - project.currentGenerations} remaining</span>
                                 </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
+                            <h3 className="text-lg font-bold text-slate-800 mb-6">Generations Activity (Last 7 Days)</h3>
+                            <div className="h-[300px] w-full">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <AreaChart data={chartData}>
+                                        <defs>
+                                            <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.1} />
+                                                <stop offset="95%" stopColor="#4f46e5" stopOpacity={0} />
+                                            </linearGradient>
+                                        </defs>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} dy={10} />
+                                        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                                        <Tooltip
+                                            contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                                        />
+                                        <Area type="monotone" dataKey="count" stroke="#4f46e5" strokeWidth={3} fillOpacity={1} fill="url(#colorCount)" />
+                                    </AreaChart>
+                                </ResponsiveContainer>
                             </div>
                         </div>
 
