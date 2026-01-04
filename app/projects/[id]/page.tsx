@@ -21,7 +21,11 @@ import {
     ExternalLink,
     Download,
     Info,
-    Loader2
+    Loader2,
+    Users,
+    UserPlus,
+    UserMinus,
+    Search
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthContext';
 
@@ -51,6 +55,9 @@ export default function ProjectDetailPage() {
     const [isDeleting, setIsDeleting] = useState(false);
 
     const [isLoading, setIsLoading] = useState(true);
+    const [members, setMembers] = useState<any[]>([]);
+    const [allProfiles, setAllProfiles] = useState<any[]>([]);
+    const [searchQuery, setSearchQuery] = useState('');
 
     useEffect(() => {
         setOrigin(window.location.origin);
@@ -135,11 +142,60 @@ export default function ProjectDetailPage() {
             if (mapped.cloudinaryTag) {
                 fetchImages(mapped.cloudinaryTag, mapped, false);
             }
+
+            // Fetch Members
+            const { data: memberData, error: mError } = await supabase
+                .from('project_members')
+                .select('id, profiles(id, full_name, email, avatar_url, role)')
+                .eq('project_id', id);
+
+
+            setMembers((memberData || []).map((m: any) => ({
+                memberId: m.id,
+                ...(Array.isArray(m.profiles) ? m.profiles[0] : m.profiles || {})
+            })));
+
+            // Fetch All Profiles (for adding)
+            if (user?.role === UserRole.ADMIN) {
+                const { data: profileData, error: pError } = await supabase
+                    .from('profiles')
+                    .select('id, full_name, email, avatar_url, role');
+                setAllProfiles(profileData || []);
+            }
+
         } catch (err) {
             console.error('Error fetching project:', err);
             router.push('/projects');
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleAddMember = async (userId: string) => {
+        try {
+            const { error } = await supabase
+                .from('project_members')
+                .insert([{ project_id: id, user_id: userId }]);
+
+            if (error) throw error;
+            fetchProjectData();
+        } catch (err) {
+            console.error('Error adding member:', err);
+            alert('User might already be a member of this project.');
+        }
+    };
+
+    const handleRemoveMember = async (memberId: string) => {
+        try {
+            const { error } = await supabase
+                .from('project_members')
+                .delete()
+                .eq('id', memberId);
+
+            if (error) throw error;
+            fetchProjectData();
+        } catch (err) {
+            console.error('Error removing member:', err);
         }
     };
 
@@ -408,48 +464,132 @@ export default function ProjectDetailPage() {
                     </div>
 
                     {user.role === UserRole.ADMIN && (
-                        <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6">
-                            <div className="flex items-center justify-between">
-                                <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                                    <Settings size={18} className="text-slate-400" />
-                                    Project Settings
+                        <div className="space-y-6">
+                            <div className="bg-white border border-slate-200 rounded-2xl p-6">
+                                <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
+                                    <Users size={18} className="text-indigo-500" />
+                                    Team Members
                                 </h3>
-                                <button
-                                    onClick={() => setShowEditModal(true)}
-                                    className="text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 px-3 py-1 rounded-lg transition-colors"
-                                >
-                                    Edit
-                                </button>
-                            </div>
-                            <div className="space-y-4">
-                                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                                    <p className="text-xs font-bold text-slate-400 uppercase mb-2">Cloudinary Cloud</p>
-                                    <p className="font-medium text-slate-700">{project.cloudinaryCloudName || 'Managed via Global Settings'}</p>
+
+                                <div className="space-y-3 mb-6">
+                                    {members.map(member => (
+                                        <div key={member.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100 group">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center text-xs font-bold text-indigo-600">
+                                                    {member.avatar_url ? <img src={member.avatar_url} className="w-full h-full rounded-full" /> : member.full_name?.charAt(0)}
+                                                </div>
+                                                <div className="overflow-hidden">
+                                                    <p className="text-sm font-bold text-slate-800 truncate">{member.full_name}</p>
+                                                    <p className="text-[10px] text-slate-500 truncate">{member.email}</p>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={() => handleRemoveMember(member.memberId)}
+                                                className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                            >
+                                                <UserMinus size={14} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                    {members.length === 0 && (
+                                        <div className="py-6 text-center text-slate-400">
+                                            <p className="text-sm font-medium">No members assigned yet</p>
+                                        </div>
+                                    )}
                                 </div>
-                                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                                    <p className="text-xs font-bold text-slate-400 uppercase mb-2">Tag / Folder Path</p>
-                                    <p className="font-medium text-slate-700">{project.cloudinaryTag || 'Not set'}</p>
-                                </div>
-                                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                                    <p className="text-xs font-bold text-slate-400 uppercase mb-2">API Security</p>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100 uppercase">
-                                            SDK Protected
-                                        </span>
-                                        <span className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
-                                            Supabase Secure
-                                        </span>
-                                    </div>
-                                </div>
+
                                 <div className="pt-4 border-t border-slate-100">
+                                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Add Member</label>
+                                    <div className="relative mb-3">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                        <input
+                                            placeholder="Search active users..."
+                                            value={searchQuery}
+                                            onChange={(e) => setSearchQuery(e.target.value)}
+                                            className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                        />
+                                    </div>
+
+                                    {searchQuery && (
+                                        <div className="max-h-40 overflow-y-auto border border-slate-100 rounded-xl divide-y divide-slate-50">
+                                            {allProfiles
+                                                .filter(p => {
+                                                    const name = (p.full_name || '').toLowerCase();
+                                                    const email = (p.email || '').toLowerCase();
+                                                    const q = searchQuery.toLowerCase();
+                                                    return name.includes(q) || email.includes(q);
+                                                })
+                                                .filter(p => !members.find(m => m.id === p.id))
+                                                .map(profile => (
+                                                    <button
+                                                        key={profile.id}
+                                                        onClick={() => {
+                                                            handleAddMember(profile.id);
+                                                            setSearchQuery('');
+                                                        }}
+                                                        className="w-full flex items-center justify-between p-3 hover:bg-slate-50 text-left transition-colors"
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-400">
+                                                                {profile.full_name?.charAt(0) || profile.email?.charAt(0)}
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-sm font-bold text-slate-800">{profile.full_name || 'New User'}</p>
+                                                                <p className="text-[10px] text-slate-500">{profile.email}</p>
+                                                            </div>
+                                                        </div>
+                                                        <UserPlus size={16} className="text-indigo-500" />
+                                                    </button>
+                                                ))
+                                            }
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                                        <Settings size={18} className="text-slate-400" />
+                                        Project Settings
+                                    </h3>
                                     <button
-                                        onClick={handleDeleteProject}
-                                        disabled={isDeleting}
-                                        className="w-full py-2 flex items-center justify-center gap-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors font-medium disabled:opacity-50"
+                                        onClick={() => setShowEditModal(true)}
+                                        className="text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 px-3 py-1 rounded-lg transition-colors"
                                     >
-                                        {isDeleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
-                                        {isDeleting ? 'Deleting...' : 'Delete Project'}
+                                        Edit
                                     </button>
+                                </div>
+                                <div className="space-y-4">
+                                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                                        <p className="text-xs font-bold text-slate-400 uppercase mb-2">Cloudinary Cloud</p>
+                                        <p className="font-medium text-slate-700">{project.cloudinaryCloudName || 'Managed via Global Settings'}</p>
+                                    </div>
+                                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                                        <p className="text-xs font-bold text-slate-400 uppercase mb-2">Tag / Folder Path</p>
+                                        <p className="font-medium text-slate-700">{project.cloudinaryTag || 'Not set'}</p>
+                                    </div>
+                                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                                        <p className="text-xs font-bold text-slate-400 uppercase mb-2">API Security</p>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100 uppercase">
+                                                SDK Protected
+                                            </span>
+                                            <span className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                                                Supabase Secure
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="pt-4 border-t border-slate-100">
+                                        <button
+                                            onClick={handleDeleteProject}
+                                            disabled={isDeleting}
+                                            className="w-full py-2 flex items-center justify-center gap-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors font-medium disabled:opacity-50"
+                                        >
+                                            {isDeleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                                            {isDeleting ? 'Deleting...' : 'Delete Project'}
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
