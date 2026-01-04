@@ -5,7 +5,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Project, UserRole, User } from '@/types';
 import { supabase } from '@/utils/supabase';
 import Link from 'next/link';
-import { Plus, Search, ExternalLink, Image as ImageIcon, Loader2, FolderKanban } from 'lucide-react';
+import { Plus, Search, ExternalLink, Image as ImageIcon, Loader2, FolderKanban, Check, Users } from 'lucide-react';
 import { useAuth } from '@/components/AuthContext';
 
 export default function ProjectListPage() {
@@ -18,7 +18,7 @@ export default function ProjectListPage() {
         name: '',
         description: '',
         dailyLimit: 1000,
-        ownerId: '',
+        assignedUserIds: [] as string[],
         cloudinaryTag: ''
     });
 
@@ -100,35 +100,40 @@ export default function ProjectListPage() {
         setIsSaving(true);
 
         try {
-            // Ensure ownerId is null if empty, otherwise UUID foreign key will fail
-            const ownerId = newProject.ownerId && newProject.ownerId !== "" ? newProject.ownerId : user?.id;
-
             const projectData = {
                 name: newProject.name.trim(),
                 description: newProject.description.trim(),
                 max_usage: newProject.dailyLimit || 1000,
                 cloudinary_tag: newProject.cloudinaryTag.trim(),
-                created_by: ownerId,
+                created_by: user?.id,
                 is_active: true
             };
 
-            console.log('🚀 Supabase: Creating project with payload:', projectData);
-
-            const { data, error } = await supabase
+            const { data: project, error: pError } = await supabase
                 .from('projects')
                 .insert([projectData])
                 .select()
                 .single();
 
-            if (error) {
-                console.error('❌ Supabase Insert Error:', error);
-                throw new Error(error.message || 'Database rejected the request (400)');
+            if (pError) throw pError;
+
+            // 2. Assign Members
+            if (newProject.assignedUserIds.length > 0) {
+                const memberData = newProject.assignedUserIds.map(userId => ({
+                    project_id: project.id,
+                    user_id: userId
+                }));
+                const { error: mError } = await supabase
+                    .from('project_members')
+                    .insert(memberData);
+
+                if (mError) console.warn('Could not assign some members:', mError);
             }
 
             // Refresh list
             await fetchData();
             setShowModal(false);
-            setNewProject({ name: '', description: '', dailyLimit: 1000, ownerId: '', cloudinaryTag: '' });
+            setNewProject({ name: '', description: '', dailyLimit: 1000, assignedUserIds: [], cloudinaryTag: '' });
         } catch (err: any) {
             console.error('Error creating project:', err);
             alert(`Project Creation Failed: ${err.message}`);
@@ -284,18 +289,44 @@ export default function ProjectListPage() {
                                         />
                                         <p className="mt-1 text-[10px] text-slate-400 italic">* Cloudinary credentials are managed in Global Settings.</p>
                                     </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-1">Assign to User</label>
-                                        <select
-                                            value={newProject.ownerId}
-                                            onChange={e => setNewProject({ ...newProject, ownerId: e.target.value })}
-                                            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                                        >
-                                            <option value="">Don't assign yet</option>
-                                            {users.filter(u => u.role === UserRole.REGULAR).map(u => (
-                                                <option key={u.id} value={u.id}>{u.name}</option>
-                                            ))}
-                                        </select>
+                                    <div className="flex-1 min-h-0 flex flex-col">
+                                        <label className="block text-sm font-medium text-slate-700 mb-2 flex items-center gap-2">
+                                            <Users size={16} className="text-indigo-500" />
+                                            Assign Team Members
+                                        </label>
+                                        <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl overflow-y-auto max-h-[220px] divide-y divide-slate-100">
+                                            {users.filter(u => u.role === UserRole.REGULAR).map(u => {
+                                                const isSelected = newProject.assignedUserIds.includes(u.id);
+                                                return (
+                                                    <button
+                                                        key={u.id}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setNewProject(prev => ({
+                                                                ...prev,
+                                                                assignedUserIds: isSelected
+                                                                    ? prev.assignedUserIds.filter(id => id !== u.id)
+                                                                    : [...prev.assignedUserIds, u.id]
+                                                            }));
+                                                        }}
+                                                        className={`w-full flex items-center justify-between p-3 transition-colors ${isSelected ? 'bg-indigo-50/50' : 'hover:bg-white'}`}
+                                                    >
+                                                        <div className="flex flex-col items-start overflow-hidden">
+                                                            <span className="text-sm font-bold text-slate-800 truncate w-full italic">{u.name}</span>
+                                                            <span className="text-[10px] text-slate-500 truncate w-full">{u.email}</span>
+                                                        </div>
+                                                        <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${isSelected ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-300'}`}>
+                                                            {isSelected && <Check size={14} />}
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })}
+                                            {users.filter(u => u.role === UserRole.REGULAR).length === 0 && (
+                                                <div className="p-8 text-center text-slate-400">
+                                                    <p className="text-xs">No regular users found to assign.</p>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             </div>

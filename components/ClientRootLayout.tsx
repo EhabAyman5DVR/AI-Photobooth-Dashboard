@@ -88,9 +88,6 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
                             Sign in with Different Email
                         </button>
                     </div>
-                    <p className="mt-6 text-[10px] text-slate-400 uppercase tracking-widest font-bold">
-                        Environment: Production
-                    </p>
                 </div>
             </div>
         );
@@ -172,12 +169,6 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
                         <h1 className="text-lg font-semibold text-slate-800">
                             {navItems.find(n => n.path === pathname)?.label || 'Project Details'}
                         </h1>
-                    </div>
-                    <div className="flex items-center gap-4">
-                        <div className="hidden md:flex flex-col text-right">
-                            <span className="text-xs font-medium text-slate-400">Environment</span>
-                            <span className="text-xs font-bold text-green-500 uppercase">Production</span>
-                        </div>
                     </div>
                 </header>
 
