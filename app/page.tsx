@@ -11,7 +11,8 @@ import {
     Zap,
     AlertCircle,
     ArrowUpRight,
-    ArrowDownRight
+    ArrowDownRight,
+    Calendar
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '@/components/AuthContext';
@@ -23,12 +24,17 @@ export default function DashboardPage() {
     const [allUsers, setAllUsers] = React.useState<any[]>([]);
     const [usageLogs, setUsageLogs] = React.useState<UsageLog[]>([]);
     const [isLoading, setIsLoading] = React.useState(true);
+    const [timeRange, setTimeRange] = React.useState<number | 'custom'>(7);
+    const [customRange, setCustomRange] = React.useState({
+        start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        end: new Date().toISOString().split('T')[0]
+    });
 
     React.useEffect(() => {
         if (user) {
             fetchDashboardData();
         }
-    }, [user]);
+    }, [user, timeRange, customRange.start, customRange.end]);
 
     const fetchDashboardData = async () => {
         setIsLoading(true);
@@ -66,14 +72,24 @@ export default function DashboardPage() {
                 setAllUsers(profilesData || []);
             }
 
-            // 3. Last 7 days usage
-            const sevenDaysAgo = new Date();
-            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            // 3. Usage Logs based on timeRange
+            let beginDate: Date;
+            let finalDate: Date = new Date();
+
+            if (timeRange === 'custom') {
+                beginDate = new Date(customRange.start);
+                finalDate = new Date(customRange.end);
+                finalDate.setHours(23, 59, 59, 999);
+            } else {
+                beginDate = new Date();
+                beginDate.setDate(beginDate.getDate() - timeRange);
+            }
 
             let logsQuery = supabase
                 .from('usage_logs')
                 .select('*')
-                .gte('timestamp', sevenDaysAgo.toISOString());
+                .gte('timestamp', beginDate.toISOString())
+                .lte('timestamp', finalDate.toISOString());
 
             if (user?.role !== UserRole.ADMIN) {
                 const projectIds = mappedProjects.map(p => p.id);
@@ -143,28 +159,49 @@ export default function DashboardPage() {
     }, [projects, allUsers]);
 
     const chartData = useMemo(() => {
-        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        const last7Days = [];
-        for (let i = 6; i >= 0; i--) {
-            const d = new Date();
-            d.setDate(d.getDate() - i);
-            last7Days.push({
-                name: days[d.getDay()],
-                dateStr: d.toISOString().split('T')[0],
+        const lastDays = [];
+
+        let start: Date;
+        let end: Date = new Date();
+        let daysCount: number;
+
+        if (timeRange === 'custom') {
+            start = new Date(customRange.start);
+            end = new Date(customRange.end);
+            daysCount = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+        } else {
+            daysCount = timeRange;
+            start = new Date();
+            start.setDate(start.getDate() - (daysCount - 1));
+        }
+
+        for (let i = 0; i < daysCount; i++) {
+            const d = new Date(start);
+            d.setDate(d.getDate() + i);
+            const dateStr = d.toISOString().split('T')[0];
+
+            let label = d.toLocaleDateString(undefined, { weekday: 'short' });
+            if (daysCount > 14) {
+                label = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+            }
+
+            lastDays.push({
+                name: label,
+                dateStr: dateStr,
                 count: 0
             });
         }
 
         usageLogs.forEach(log => {
             const logDate = log.timestamp.split('T')[0];
-            const dayEntry = last7Days.find(d => d.dateStr === logDate);
+            const dayEntry = lastDays.find(d => d.dateStr === logDate);
             if (dayEntry) {
                 dayEntry.count += log.amount;
             }
         });
 
-        return last7Days;
-    }, [usageLogs]);
+        return lastDays;
+    }, [usageLogs, timeRange, customRange]);
 
     if (!user) return null;
     if (isLoading) {
@@ -198,7 +235,50 @@ export default function DashboardPage() {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200">
-                    <h3 className="text-lg font-bold text-slate-800 mb-6">Generations Activity</h3>
+                    <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-6">
+                        <h3 className="text-lg font-bold text-slate-800">Generations Activity</h3>
+                        <div className="flex flex-wrap items-center gap-3">
+                            {timeRange === 'custom' && (
+                                <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-100 animate-in fade-in slide-in-from-right-2 duration-300">
+                                    <input
+                                        type="date"
+                                        value={customRange.start}
+                                        onChange={(e) => setCustomRange(prev => ({ ...prev, start: e.target.value }))}
+                                        className="bg-transparent text-[10px] font-bold text-slate-600 outline-none px-2"
+                                    />
+                                    <span className="text-slate-300">-</span>
+                                    <input
+                                        type="date"
+                                        value={customRange.end}
+                                        onChange={(e) => setCustomRange(prev => ({ ...prev, end: e.target.value }))}
+                                        className="bg-transparent text-[10px] font-bold text-slate-600 outline-none px-2"
+                                    />
+                                </div>
+                            )}
+                            <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-100">
+                                {[7, 30, 90].map((range) => (
+                                    <button
+                                        key={range}
+                                        onClick={() => setTimeRange(range as number)}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${timeRange === range ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                    >
+                                        {range === 7 ? '7D' : range === 30 ? '30D' : '90D'}
+                                    </button>
+                                ))}
+                                <button
+                                    onClick={() => setTimeRange('custom')}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${timeRange === 'custom' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                >
+                                    Custom
+                                </button>
+                                <div className="w-[1px] h-4 bg-slate-200 mx-1" />
+                                <div className="flex items-center gap-1 px-2 text-slate-400">
+                                    <Calendar size={14} />
+                                    <span className="text-[10px] font-bold uppercase">Range</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     <div className="h-[300px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
                             <AreaChart data={chartData}>

@@ -25,7 +25,8 @@ import {
     Users,
     UserPlus,
     UserMinus,
-    Search
+    Search,
+    Calendar
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '@/components/AuthContext';
@@ -59,6 +60,11 @@ export default function ProjectDetailPage() {
     const [members, setMembers] = useState<any[]>([]);
     const [allProfiles, setAllProfiles] = useState<any[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
+    const [timeRange, setTimeRange] = useState<number | 'custom'>(7);
+    const [customRange, setCustomRange] = useState({
+        start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        end: new Date().toISOString().split('T')[0]
+    });
 
     useEffect(() => {
         setOrigin(window.location.origin);
@@ -67,7 +73,7 @@ export default function ProjectDetailPage() {
     useEffect(() => {
         if (!user || !id) return;
         fetchProjectData();
-    }, [id, user]);
+    }, [id, user, timeRange, customRange.start, customRange.end]);
 
     const fetchProjectData = async () => {
         setIsLoading(true);
@@ -126,11 +132,25 @@ export default function ProjectDetailPage() {
                 cloudinaryTag: mapped.cloudinaryTag || ''
             });
 
-            // Fetch Logs
+            // Fetch Logs based on timeRange
+            let beginDate: Date;
+            let finalDate: Date = new Date();
+
+            if (timeRange === 'custom') {
+                beginDate = new Date(customRange.start);
+                finalDate = new Date(customRange.end);
+                finalDate.setHours(23, 59, 59, 999);
+            } else {
+                beginDate = new Date();
+                beginDate.setDate(beginDate.getDate() - timeRange);
+            }
+
             const { data: logsData } = await supabase
                 .from('usage_logs')
                 .select('*')
                 .eq('project_id', id)
+                .gte('timestamp', beginDate.toISOString())
+                .lte('timestamp', finalDate.toISOString())
                 .order('timestamp', { ascending: false });
 
             setLogs((logsData || []).map(l => ({
@@ -331,28 +351,49 @@ export default function ProjectDetailPage() {
     };
 
     const chartData = useMemo(() => {
-        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        const last7Days = [];
-        for (let i = 6; i >= 0; i--) {
-            const d = new Date();
-            d.setDate(d.getDate() - i);
-            last7Days.push({
-                name: days[d.getDay()],
-                dateStr: d.toISOString().split('T')[0],
+        const lastDays = [];
+
+        let start: Date;
+        let end: Date = new Date();
+        let daysCount: number;
+
+        if (timeRange === 'custom') {
+            start = new Date(customRange.start);
+            end = new Date(customRange.end);
+            daysCount = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+        } else {
+            daysCount = timeRange as number;
+            start = new Date();
+            start.setDate(start.getDate() - (daysCount - 1));
+        }
+
+        for (let i = 0; i < daysCount; i++) {
+            const d = new Date(start);
+            d.setDate(d.getDate() + i);
+            const dateStr = d.toISOString().split('T')[0];
+
+            let label = d.toLocaleDateString(undefined, { weekday: 'short' });
+            if (daysCount > 14) {
+                label = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+            }
+
+            lastDays.push({
+                name: label,
+                dateStr: dateStr,
                 count: 0
             });
         }
 
         logs.forEach(log => {
             const logDate = log.timestamp.split('T')[0];
-            const dayEntry = last7Days.find(d => d.dateStr === logDate);
+            const dayEntry = lastDays.find(d => d.dateStr === logDate);
             if (dayEntry) {
                 dayEntry.count += log.amount;
             }
         });
 
-        return last7Days;
-    }, [logs]);
+        return lastDays;
+    }, [logs, timeRange, customRange]);
 
     if (isLoading || !project || !user) {
         return (
@@ -445,7 +486,49 @@ export default function ProjectDetailPage() {
                         </div>
 
                         <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
-                            <h3 className="text-lg font-bold text-slate-800 mb-6">Generations Activity (Last 7 Days)</h3>
+                            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-6">
+                                <h3 className="text-lg font-bold text-slate-800">Generations Activity</h3>
+                                <div className="flex flex-wrap items-center gap-3">
+                                    {timeRange === 'custom' && (
+                                        <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-100 animate-in fade-in slide-in-from-right-2 duration-300">
+                                            <input
+                                                type="date"
+                                                value={customRange.start}
+                                                onChange={(e) => setCustomRange(prev => ({ ...prev, start: e.target.value }))}
+                                                className="bg-transparent text-[10px] font-bold text-slate-600 outline-none px-2"
+                                            />
+                                            <span className="text-slate-300">-</span>
+                                            <input
+                                                type="date"
+                                                value={customRange.end}
+                                                onChange={(e) => setCustomRange(prev => ({ ...prev, end: e.target.value }))}
+                                                className="bg-transparent text-[10px] font-bold text-slate-600 outline-none px-2"
+                                            />
+                                        </div>
+                                    )}
+                                    <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-100">
+                                        {[7, 30, 90].map((range) => (
+                                            <button
+                                                key={range}
+                                                onClick={() => setTimeRange(range as number)}
+                                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${timeRange === range ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                            >
+                                                {range === 7 ? '7D' : range === 30 ? '30D' : '90D'}
+                                            </button>
+                                        ))}
+                                        <button
+                                            onClick={() => setTimeRange('custom')}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${timeRange === 'custom' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                        >
+                                            Custom
+                                        </button>
+                                        <div className="w-[1px] h-4 bg-slate-200 mx-1" />
+                                        <div className="flex items-center gap-1 px-2 text-slate-400">
+                                            <Calendar size={14} />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                             <div className="h-[300px] w-full">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <AreaChart data={chartData}>
