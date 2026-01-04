@@ -37,10 +37,20 @@ export default function ProjectListPage() {
         setIsLoading(true);
         try {
             // Fetch Projects
-            const { data: projectsData, error: pError } = await supabase
-                .from('projects')
-                .select('*')
-                .order('created_at', { ascending: false });
+            let projectsQuery = supabase.from('projects').select('*');
+
+            // If not admin, filter by owner OR team membership
+            if (user?.role !== UserRole.ADMIN) {
+                const { data: memberProjects } = await supabase
+                    .from('project_members')
+                    .select('project_id')
+                    .eq('user_id', user?.id);
+
+                const memberIds = (memberProjects || []).map(m => m.project_id);
+                projectsQuery = projectsQuery.or(`created_by.eq.${user?.id},id.in.(${memberIds.length ? memberIds.join(',') : '00000000-0000-0000-0000-000000000000'})`);
+            }
+
+            const { data: projectsData, error: pError } = await projectsQuery.order('created_at', { ascending: false });
 
             if (pError) throw pError;
 
@@ -129,12 +139,9 @@ export default function ProjectListPage() {
 
     const filteredProjects = useMemo(() => {
         if (!user) return [];
+        // Filtering is now handled at the query level for security/efficiency,
+        // but we keep the memo for search Term filtering.
         let result = projects;
-
-        // Basic filtering for projects - in a real app, we would use project_members
-        if (user.role === UserRole.REGULAR) {
-            result = projects.filter(p => p.ownerId === user.id);
-        }
 
         if (searchTerm) {
             result = result.filter(p =>
