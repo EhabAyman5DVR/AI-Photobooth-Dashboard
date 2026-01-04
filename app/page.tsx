@@ -2,8 +2,8 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { Project, UserRole } from '@/types';
-import { getStoreData } from '@/store';
+import { Project, UserRole, UsageLog } from '@/types';
+import { supabase } from '@/utils/supabase';
 import {
     TrendingUp,
     FolderKanban,
@@ -21,17 +21,85 @@ export default function DashboardPage() {
 
     const [allProjects, setAllProjects] = React.useState<Project[]>([]);
     const [allUsers, setAllUsers] = React.useState<any[]>([]);
+    const [usageLogs, setUsageLogs] = React.useState<UsageLog[]>([]);
+    const [isLoading, setIsLoading] = React.useState(true);
 
     React.useEffect(() => {
-        setAllProjects(getStoreData<Project[]>('pb_projects', []));
-        setAllUsers(getStoreData<any[]>('pb_users', []));
-    }, []);
+        if (user) {
+            fetchDashboardData();
+        }
+    }, [user]);
 
-    const projects = useMemo(() => {
-        if (!user) return [];
-        if (user.role === UserRole.ADMIN) return allProjects;
-        return allProjects.filter(p => user.assignedProjectIds.includes(p.id));
-    }, [user, allProjects]);
+    const fetchDashboardData = async () => {
+        setIsLoading(true);
+        try {
+            // 1. Fetch Projects
+            let projectsQuery = supabase.from('projects').select('*');
+
+            if (user?.role !== UserRole.ADMIN) {
+                const { data: memberProjects } = await supabase
+                    .from('project_members')
+                    .select('project_id')
+                    .eq('user_id', user?.id);
+
+                const memberIds = (memberProjects || []).map(m => m.project_id);
+                projectsQuery = projectsQuery.or(`created_by.eq.${user?.id},id.in.(${memberIds.length ? memberIds.join(',') : '00000000-0000-0000-0000-000000000000'})`);
+            }
+
+            const { data: projectsData } = await projectsQuery;
+
+            const mappedProjects: Project[] = (projectsData || []).map(p => ({
+                id: p.id,
+                name: p.name,
+                description: p.description || '',
+                dailyLimit: p.max_usage || 0,
+                currentGenerations: p.total_usage || 0,
+                status: p.is_active ? ((p.total_usage || 0) >= (p.max_usage || 0) ? 'exhausted' : 'active') : 'paused',
+                createdAt: p.created_at || '',
+                ownerId: p.created_by || ''
+            }));
+            setAllProjects(mappedProjects);
+
+            // 2. Fetch Profiles for Admin
+            if (user?.role === UserRole.ADMIN) {
+                const { data: profilesData } = await supabase.from('profiles').select('id');
+                setAllUsers(profilesData || []);
+            }
+
+            // 3. Last 7 days usage
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+            let logsQuery = supabase
+                .from('usage_logs')
+                .select('*')
+                .gte('timestamp', sevenDaysAgo.toISOString());
+
+            if (user?.role !== UserRole.ADMIN) {
+                const projectIds = mappedProjects.map(p => p.id);
+                if (projectIds.length > 0) {
+                    logsQuery = logsQuery.in('project_id', projectIds);
+                } else {
+                    logsQuery = logsQuery.eq('project_id', '00000000-0000-0000-0000-000000000000');
+                }
+            }
+
+            const { data: logsData } = await logsQuery;
+            setUsageLogs((logsData || []).map(l => ({
+                id: l.id,
+                projectId: l.project_id,
+                timestamp: l.timestamp,
+                amount: l.amount
+            })));
+
+        } catch (err) {
+            console.error('Error fetching dashboard data:', err);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const projects = allProjects;
 
     const stats = useMemo(() => {
         const totalGen = projects.reduce((acc, curr) => acc + curr.currentGenerations, 0);
@@ -74,17 +142,39 @@ export default function DashboardPage() {
         ];
     }, [projects, allUsers]);
 
-    const chartData = [
-        { name: 'Mon', count: 400 },
-        { name: 'Tue', count: 300 },
-        { name: 'Wed', count: 600 },
-        { name: 'Thu', count: 800 },
-        { name: 'Fri', count: 500 },
-        { name: 'Sat', count: 900 },
-        { name: 'Sun', count: 700 },
-    ];
+    const chartData = useMemo(() => {
+        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const last7Days = [];
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            last7Days.push({
+                name: days[d.getDay()],
+                dateStr: d.toISOString().split('T')[0],
+                count: 0
+            });
+        }
+
+        usageLogs.forEach(log => {
+            const logDate = log.timestamp.split('T')[0];
+            const dayEntry = last7Days.find(d => d.dateStr === logDate);
+            if (dayEntry) {
+                dayEntry.count += log.amount;
+            }
+        });
+
+        return last7Days;
+    }, [usageLogs]);
 
     if (!user) return null;
+    if (isLoading) {
+        return (
+            <div className="min-h-[400px] flex flex-col items-center justify-center gap-4">
+                <Zap className="animate-pulse text-indigo-600" size={48} />
+                <p className="text-slate-500 font-medium animate-pulse">Loading dashboard data...</p>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
