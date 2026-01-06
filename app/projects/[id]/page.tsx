@@ -55,6 +55,8 @@ export default function ProjectDetailPage() {
         cloudinaryTag: ''
     });
     const [isDeleting, setIsDeleting] = useState(false);
+    const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    const [isSelectionMode, setIsSelectionMode] = useState(false);
 
     const [isLoading, setIsLoading] = useState(true);
     const [members, setMembers] = useState<any[]>([]);
@@ -342,6 +344,43 @@ export default function ProjectDetailPage() {
         } finally {
             setIsSimulating(false);
         }
+    };
+
+    const handleBulkDownload = async () => {
+        if (selectedIds.length === 0) return;
+
+        const selectedImages = images.filter(img => selectedIds.includes(img.public_id));
+
+        for (const img of selectedImages) {
+            const dateStr = new Date(img.created_at).toLocaleString(undefined, {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            }).replace(/[,:]/g, '').replace(/\s+/g, '_');
+            const fileName = `${project?.name}_${dateStr}.${img.format}`;
+            const url = `https://res.cloudinary.com/${project?.cloudinaryCloudName || 'placeholder'}/image/upload/v${img.version}/${img.public_id}.${img.format}`;
+
+            await handleDownload(url, fileName);
+            // Small delay to prevent browser blocking multiple downloads
+            await new Promise(resolve => setTimeout(resolve, 300));
+        }
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedIds.length === images.length) {
+            setSelectedIds([]);
+        } else {
+            setSelectedIds(images.map(img => img.public_id));
+        }
+    };
+
+    const toggleImageSelection = (publicId: string) => {
+        setSelectedIds(prev =>
+            prev.includes(publicId)
+                ? prev.filter(id => id !== publicId)
+                : [...prev, publicId]
+        );
     };
 
     const handleDownload = async (url: string, filename: string) => {
@@ -756,14 +795,50 @@ export default function ProjectDetailPage() {
                                 Gallery
                             </h3>
                         </div>
-                        <button
-                            onClick={() => fetchImages()}
-                            className="flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-slate-100 rounded-xl text-slate-600 text-sm font-bold transition-all"
-                        >
-                            <RefreshCw size={16} className={loadingImages ? 'animate-spin' : ''} />
-                            Refresh Images
-                        </button>
+                        <div className="flex items-center gap-3">
+                            {selectedIds.length > 0 && (
+                                <button
+                                    onClick={() => setSelectedIds([])}
+                                    className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-200 transition-all"
+                                >
+                                    Clear Selection
+                                </button>
+                            )}
+                            <button
+                                onClick={() => fetchImages()}
+                                className="flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-slate-100 rounded-xl text-slate-600 text-sm font-bold transition-all"
+                            >
+                                <RefreshCw size={16} className={loadingImages ? 'animate-spin' : ''} />
+                                Refresh
+                            </button>
+                        </div>
                     </div>
+
+                    {selectedIds.length > 0 && images.length > 0 && (
+                        <div className="flex items-center justify-between mb-6 p-4 bg-indigo-50 rounded-2xl border border-indigo-100 animate-in slide-in-from-top-2 duration-300">
+                            <div className="flex items-center gap-4">
+                                <button
+                                    onClick={toggleSelectAll}
+                                    className="text-sm font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-2"
+                                >
+                                    <div className={`w-5 h-5 rounded border flex items-center justify-center ${selectedIds.length === images.length ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-indigo-300'}`}>
+                                        {selectedIds.length === images.length && <Check size={14} />}
+                                    </div>
+                                    {selectedIds.length === images.length ? 'Deselect All' : 'Select All'}
+                                </button>
+                                <span className="text-sm text-indigo-400">|</span>
+                                <span className="text-sm font-medium text-indigo-600">{selectedIds.length} images selected</span>
+                            </div>
+                            <button
+                                onClick={handleBulkDownload}
+                                disabled={selectedIds.length === 0}
+                                className="flex items-center gap-2 px-6 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 disabled:opacity-50 disabled:shadow-none"
+                            >
+                                <Download size={18} />
+                                Download Selected
+                            </button>
+                        </div>
+                    )}
 
                     {!project.cloudinaryTag ? (
                         <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -785,12 +860,21 @@ export default function ProjectDetailPage() {
                         <>
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                                 {images.map(img => (
-                                    <div key={img.public_id} className="group relative aspect-square bg-slate-100 rounded-2xl overflow-hidden border border-slate-100 hover:shadow-xl transition-all duration-300">
+                                    <div
+                                        key={img.public_id}
+                                        onClick={() => toggleImageSelection(img.public_id)}
+                                        className={`group relative aspect-square bg-slate-100 rounded-2xl overflow-hidden border-2 transition-all duration-300 cursor-pointer ${selectedIds.includes(img.public_id) ? 'border-indigo-600 shadow-xl' : 'border-transparent hover:border-indigo-200'}`}
+                                    >
                                         <img
                                             src={`https://res.cloudinary.com/${project.cloudinaryCloudName || 'placeholder'}/image/upload/w_400,c_fill,g_auto/v${img.version}/${img.public_id}.${img.format}`}
                                             alt={img.public_id}
-                                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                                            className={`w-full h-full object-cover transition-transform duration-500 ${selectedIds.includes(img.public_id) ? 'scale-95 opacity-90' : 'group-hover:scale-110'}`}
                                         />
+
+                                        <div className={`absolute top-3 right-3 z-20 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${selectedIds.includes(img.public_id) ? 'bg-indigo-600 border-indigo-600 text-white active:scale-90' : 'bg-black/20 backdrop-blur-md border-white/50 opacity-0 group-hover:opacity-100'}`}>
+                                            {selectedIds.includes(img.public_id) && <Check size={16} />}
+                                        </div>
+
                                         <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-4 flex flex-col justify-end">
                                             <p className="text-white text-[10px] font-bold truncate">
                                                 {project.name} - {new Date(img.created_at).toLocaleString(undefined, {
@@ -802,7 +886,8 @@ export default function ProjectDetailPage() {
                                             </p>
                                             <div className="flex items-center gap-2 mt-2">
                                                 <button
-                                                    onClick={() => {
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
                                                         const dateStr = new Date(img.created_at).toLocaleString(undefined, {
                                                             month: 'short',
                                                             day: 'numeric',
@@ -824,6 +909,7 @@ export default function ProjectDetailPage() {
                                                     href={`https://res.cloudinary.com/${project.cloudinaryCloudName || 'placeholder'}/image/upload/v${img.version}/${img.public_id}.${img.format}`}
                                                     target="_blank"
                                                     rel="noreferrer"
+                                                    onClick={(e) => e.stopPropagation()}
                                                     className="p-1.5 bg-white/20 backdrop-blur-md rounded-lg text-white hover:bg-white/40 transition-colors"
                                                 >
                                                     <ExternalLink size={14} />
