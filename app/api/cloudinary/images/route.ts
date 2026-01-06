@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
     let apiSecret = searchParams.get('apiSecret');
     const tag = searchParams.get('tag');
     const nextCursor = searchParams.get('next_cursor');
+    const sort = searchParams.get('sort') || 'desc';
 
     // If credentials not in query, try fetching from Supabase
     if (!cloudName || !apiKey || !apiSecret) {
@@ -51,7 +52,7 @@ export async function GET(request: NextRequest) {
     try {
         const result = await cloudinary.search
             .expression(`(tags:"${tag}" OR folder:"${tag}/*") AND NOT folder:"${tag}/qr-codes/*"`)
-            .sort_by('created_at', 'desc')
+            .sort_by('created_at', sort as 'asc' | 'desc')
             .max_results(24)
             .next_cursor(nextCursor || undefined)
             .execute();

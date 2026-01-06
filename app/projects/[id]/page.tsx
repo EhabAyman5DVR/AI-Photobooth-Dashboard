@@ -26,7 +26,9 @@ import {
     UserPlus,
     UserMinus,
     Search,
-    Calendar
+    Calendar,
+    ArrowUpDown,
+    Clock
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '@/components/AuthContext';
@@ -57,6 +59,7 @@ export default function ProjectDetailPage() {
     const [isDeleting, setIsDeleting] = useState(false);
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [isSelectionMode, setIsSelectionMode] = useState(false);
+    const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
 
     const [isLoading, setIsLoading] = useState(true);
     const [members, setMembers] = useState<any[]>([]);
@@ -75,7 +78,7 @@ export default function ProjectDetailPage() {
     useEffect(() => {
         if (!user || !id) return;
         fetchProjectData();
-    }, [id, user, timeRange, customRange.start, customRange.end]);
+    }, [id, user, timeRange, customRange.start, customRange.end, sortOrder]);
 
     const fetchProjectData = async () => {
         setIsLoading(true);
@@ -285,7 +288,7 @@ export default function ProjectDetailPage() {
 
         try {
             // Simplified URL: The server-side API now fetches secrets from Supabase global_settings
-            let url = `/api/cloudinary/images?tag=${encodeURIComponent(activeTag)}`;
+            let url = `/api/cloudinary/images?tag=${encodeURIComponent(activeTag)}&sort=${sortOrder}`;
             if (p.cloudinaryCloudName) {
                 url += `&cloudName=${encodeURIComponent(p.cloudinaryCloudName)}`;
             }
@@ -804,6 +807,14 @@ export default function ProjectDetailPage() {
                                     Clear Selection
                                 </button>
                             )}
+                            <button
+                                onClick={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
+                                className="flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-slate-100 rounded-xl text-slate-600 text-sm font-bold transition-all"
+                                title={sortOrder === 'desc' ? 'Sort Ascending' : 'Sort Descending'}
+                            >
+                                <ArrowUpDown size={16} className={sortOrder === 'asc' ? 'rotate-180 transition-transform' : 'transition-transform'} />
+                                {sortOrder === 'desc' ? 'Newest First' : 'Oldest First'}
+                            </button>
                             <button
                                 onClick={() => fetchImages()}
                                 className="flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-slate-100 rounded-xl text-slate-600 text-sm font-bold transition-all"
