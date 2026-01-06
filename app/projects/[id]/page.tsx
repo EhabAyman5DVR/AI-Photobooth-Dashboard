@@ -344,6 +344,25 @@ export default function ProjectDetailPage() {
         }
     };
 
+    const handleDownload = async (url: string, filename: string) => {
+        try {
+            const response = await fetch(url);
+            const blob = await response.blob();
+            const blobUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(blobUrl);
+        } catch (error) {
+            console.error('Download failed:', error);
+            // Fallback: open in new tab with attachment flag if possible
+            window.open(url + (url.includes('?') ? '&' : '?') + 'fl_attachment', '_blank');
+        }
+    };
+
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text);
         setCopied(true);
@@ -734,11 +753,8 @@ export default function ProjectDetailPage() {
                         <div>
                             <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
                                 <ImageIcon className="text-indigo-500" />
-                                Cloudinary Asset Gallery
+                                Gallery
                             </h3>
-                            <p className="text-sm text-slate-500 mt-1">
-                                Showing images from Cloudinary with tag <span className="font-bold text-indigo-600">"{project.cloudinaryTag}"</span>
-                            </p>
                         </div>
                         <button
                             onClick={() => fetchImages()}
@@ -776,9 +792,32 @@ export default function ProjectDetailPage() {
                                             className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                                         />
                                         <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-4 flex flex-col justify-end">
-                                            <p className="text-white text-xs font-bold truncate">{img.public_id}</p>
+                                            <p className="text-white text-[10px] font-bold truncate">
+                                                {project.name} - {new Date(img.created_at).toLocaleString(undefined, {
+                                                    month: 'short',
+                                                    day: 'numeric',
+                                                    hour: '2-digit',
+                                                    minute: '2-digit'
+                                                })}
+                                            </p>
                                             <div className="flex items-center gap-2 mt-2">
-                                                <button className="p-1.5 bg-white/20 backdrop-blur-md rounded-lg text-white hover:bg-white/40 transition-colors">
+                                                <button
+                                                    onClick={() => {
+                                                        const dateStr = new Date(img.created_at).toLocaleString(undefined, {
+                                                            month: 'short',
+                                                            day: 'numeric',
+                                                            hour: '2-digit',
+                                                            minute: '2-digit'
+                                                        }).replace(/[,:]/g, '').replace(/\s+/g, '_');
+                                                        const fileName = `${project.name}_${dateStr}.${img.format}`;
+                                                        handleDownload(
+                                                            `https://res.cloudinary.com/${project.cloudinaryCloudName || 'placeholder'}/image/upload/v${img.version}/${img.public_id}.${img.format}`,
+                                                            fileName
+                                                        );
+                                                    }}
+                                                    className="p-1.5 bg-white/20 backdrop-blur-md rounded-lg text-white hover:bg-white/40 transition-colors"
+                                                    title="Download Image"
+                                                >
                                                     <Download size={14} />
                                                 </button>
                                                 <a
