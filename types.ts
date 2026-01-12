@@ -61,6 +61,14 @@ export interface CloudinaryImage {
   height: number;
   type: string;
   created_at: string;
+  context?: {
+    custom?: {
+      [key: string]: string;
+    };
+  };
+  metadata?: {
+    [key: string]: string;
+  };
 }
 export interface GlobalSettings {
   cloudinaryCloudName: string;

@@ -54,6 +54,8 @@ export async function GET(request: NextRequest) {
             .expression(`(tags:"${tag}" OR folder:"${tag}/*") AND NOT folder:"${tag}/qr-codes/*"`)
             .sort_by('created_at', sort as 'asc' | 'desc')
             .max_results(24)
+            .with_field('context')
+            .with_field('metadata')
             .next_cursor(nextCursor || undefined)
             .execute();
 
