@@ -62,9 +62,7 @@ export interface CloudinaryImage {
   type: string;
   created_at: string;
   context?: {
-    custom?: {
-      [key: string]: string;
-    };
+    [key: string]: string;
   };
   metadata?: {
     [key: string]: string;

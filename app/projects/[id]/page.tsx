@@ -464,6 +464,40 @@ export default function ProjectDetailPage() {
         return lastDays;
     }, [logs, timeRange, customRange]);
 
+    const processedDetails = useMemo(() => {
+        if (!inspectImage) return [];
+        const ctx = inspectImage.context || {};
+        const meta = inspectImage.metadata || {};
+
+        const displayItems: { label: string; value: string }[] = [];
+
+        // Merge prompt_1, prompt_2, prompt_11, etc.
+        const promptKeys = Object.keys(ctx).filter(k => k.startsWith('prompt_'));
+        if (promptKeys.length > 0) {
+            const sortedPromptKeys = promptKeys.sort((a, b) => {
+                const numA = parseInt(a.replace('prompt_', '')) || 0;
+                const numB = parseInt(b.replace('prompt_', '')) || 0;
+                return numA - numB;
+            });
+            const fullPrompt = sortedPromptKeys.map(k => ctx[k]).join('');
+            displayItems.push({ label: 'Full Generation Prompt', value: fullPrompt });
+        }
+
+        // Add other context fields (excluding the merged prompts)
+        Object.entries(ctx).forEach(([key, value]) => {
+            if (!key.startsWith('prompt_')) {
+                displayItems.push({ label: key.replace(/_/g, ' '), value });
+            }
+        });
+
+        // Add metadata fields (from structured metadata if any)
+        Object.entries(meta).forEach(([key, value]) => {
+            displayItems.push({ label: key.replace(/_/g, ' '), value });
+        });
+
+        return displayItems;
+    }, [inspectImage]);
+
     if (isLoading || !project || !user) {
         return (
             <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -1155,13 +1189,13 @@ export default function ProjectDetailPage() {
                                         </p>
                                     </div>
 
-                                    {inspectImage.context?.custom ? (
+                                    {processedDetails.length > 0 ? (
                                         <div className="space-y-4">
-                                            {Object.entries(inspectImage.context.custom).map(([key, value]) => (
-                                                <div key={key}>
-                                                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{key.replace(/_/g, ' ')}</label>
-                                                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 italic text-slate-600 text-sm leading-relaxed">
-                                                        "{value}"
+                                            {processedDetails.map((item, idx) => (
+                                                <div key={idx}>
+                                                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{item.label}</label>
+                                                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 italic text-slate-600 text-sm leading-relaxed whitespace-pre-wrap">
+                                                        "{item.value}"
                                                     </div>
                                                 </div>
                                             ))}
