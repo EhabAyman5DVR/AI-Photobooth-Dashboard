@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
     let apiKey = searchParams.get('apiKey');
     let apiSecret = searchParams.get('apiSecret');
     const tag = searchParams.get('tag');
+    const subtag = searchParams.get('subtag');
     const nextCursor = searchParams.get('next_cursor');
     const sort = searchParams.get('sort') || 'desc';
 
@@ -50,12 +51,18 @@ export async function GET(request: NextRequest) {
     });
 
     try {
+        let expression = `(tags:"${tag}" OR folder:"${tag}/*") AND NOT folder:"${tag}/qr-codes/*"`;
+        if (subtag) {
+            expression = `(${expression}) AND tags:"${subtag}"`;
+        }
+
         const result = await cloudinary.search
-            .expression(`(tags:"${tag}" OR folder:"${tag}/*") AND NOT folder:"${tag}/qr-codes/*"`)
+            .expression(expression)
             .sort_by('created_at', sort as 'asc' | 'desc')
             .max_results(24)
             .with_field('context')
             .with_field('metadata')
+            .with_field('tags')
             .next_cursor(nextCursor || undefined)
             .execute();
 

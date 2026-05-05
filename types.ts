@@ -67,6 +67,7 @@ export interface CloudinaryImage {
   metadata?: {
     [key: string]: string;
   };
+  tags?: string[];
 }
 export interface GlobalSettings {
   cloudinaryCloudName: string;

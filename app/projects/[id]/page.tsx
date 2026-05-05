@@ -47,9 +47,13 @@ export default function ProjectDetailPage() {
     const [loadingImages, setLoadingImages] = useState(false);
     const [copied, setCopied] = useState(false);
     const [isSimulating, setIsSimulating] = useState(false);
-    const [activeTab, setActiveTab] = useState<'overview' | 'images' | 'logs'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'images' | 'featured' | 'logs'>('overview');
     const [origin, setOrigin] = useState('');
     const [nextCursor, setNextCursor] = useState<string | null>(null);
+    const [featuredImages, setFeaturedImages] = useState<CloudinaryImage[]>([]);
+    const [loadingFeatured, setLoadingFeatured] = useState(false);
+    const [featuredCursor, setFeaturedCursor] = useState<string | null>(null);
+    const [loadingMoreFeatured, setLoadingMoreFeatured] = useState(false);
     const [loadingMore, setLoadingMore] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
     const [editForm, setEditForm] = useState({
@@ -175,6 +179,7 @@ export default function ProjectDetailPage() {
 
             if (mapped.cloudinaryTag) {
                 fetchImages(mapped.cloudinaryTag, mapped, false);
+                fetchFeaturedImages(mapped, false);
             }
 
             // Fetch Members
@@ -324,6 +329,47 @@ export default function ProjectDetailPage() {
         }
     };
 
+    const fetchFeaturedImages = async (currentProject?: Project, append = false) => {
+        const p = currentProject || project;
+        if (!p) return;
+
+        const projectTag = p.cloudinaryTag || '';
+        if (!projectTag) return;
+
+        const activeTag = 'Screen-Saver';
+
+        if (append) setLoadingMoreFeatured(true);
+        else setLoadingFeatured(true);
+
+        try {
+            let url = `/api/cloudinary/images?tag=${encodeURIComponent(projectTag)}&subtag=${encodeURIComponent(activeTag)}&sort=${sortOrder}`;
+            if (p.cloudinaryCloudName) {
+                url += `&cloudName=${encodeURIComponent(p.cloudinaryCloudName)}`;
+            }
+            if (append && featuredCursor) {
+                url += `&next_cursor=${featuredCursor}`;
+            }
+
+            const response = await fetch(url);
+            if (response.ok) {
+                const data = await response.json();
+                if (append) {
+                    setFeaturedImages(prev => [...prev, ...(data.resources || [])]);
+                } else {
+                    setFeaturedImages(data.resources || []);
+                }
+                setFeaturedCursor(data.next_cursor || null);
+            } else {
+                if (!append) setFeaturedImages([]);
+            }
+        } catch (err) {
+            console.error('Error fetching Featured images:', err);
+        } finally {
+            setLoadingFeatured(false);
+            setLoadingMoreFeatured(false);
+        }
+    };
+
     const handleSimulateApiCall = async () => {
         if (!project || isSimulating) return;
         setIsSimulating(true);
@@ -360,7 +406,8 @@ export default function ProjectDetailPage() {
     const handleBulkDownload = async () => {
         if (selectedIds.length === 0) return;
 
-        const selectedImages = images.filter(img => selectedIds.includes(img.public_id));
+        const currentImages = activeTab === 'featured' ? featuredImages : images;
+        const selectedImages = currentImages.filter(img => selectedIds.includes(img.public_id));
 
         for (const img of selectedImages) {
             const dateStr = new Date(img.created_at).toLocaleString(undefined, {
@@ -379,10 +426,11 @@ export default function ProjectDetailPage() {
     };
 
     const toggleSelectAll = () => {
-        if (selectedIds.length === images.length) {
+        const currentImages = activeTab === 'featured' ? featuredImages : images;
+        if (selectedIds.length === currentImages.length) {
             setSelectedIds([]);
         } else {
-            setSelectedIds(images.map(img => img.public_id));
+            setSelectedIds(currentImages.map(img => img.public_id));
         }
     };
 
@@ -542,6 +590,12 @@ export default function ProjectDetailPage() {
                             className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'images' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-700'}`}
                         >
                             Generated Images
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('featured')}
+                            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'featured' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                            Featured
                         </button>
                         {user.role === UserRole.ADMIN && (
                             <button
@@ -929,6 +983,13 @@ export default function ProjectDetailPage() {
                                                 {selectedIds.includes(img.public_id) && <Check size={16} />}
                                             </div>
 
+                                            {img.tags?.includes('Screen-Saver') && (
+                                                <div className="absolute top-3 left-3 z-20 px-2 py-1 bg-amber-500 text-white text-[10px] font-bold rounded-lg shadow-lg flex items-center gap-1 animate-in zoom-in-95">
+                                                    <Zap size={10} fill="currentColor" />
+                                                    Featured
+                                                </div>
+                                            )}
+
                                             <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-4 flex flex-col justify-end">
                                                 <p className="text-white text-[10px] font-bold truncate">
                                                     {project.name} - {new Date(img.created_at).toLocaleString(undefined, {
@@ -1014,6 +1075,176 @@ export default function ProjectDetailPage() {
                                         The dashboard now uses the <b>Cloudinary Node.js SDK</b> securely. Ensure you have provided your <b>API Key</b> and <b>Secret</b> in the global settings. No insecure "Resource List" settings are required on Cloudinary.
                                     </p>
                                 </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {activeTab === 'featured' && (
+                    <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm min-h-[500px]">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+                            <div>
+                                <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                    <Zap className="text-amber-500" />
+                                    Featured Photos
+                                </h3>
+                                <p className="text-slate-500 text-sm mt-1">High-quality photos tagged for Screen-Saver</p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                {selectedIds.length > 0 && (
+                                    <button
+                                        onClick={() => setSelectedIds([])}
+                                        className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-200 transition-all"
+                                    >
+                                        Clear Selection
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
+                                    className="flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-slate-100 rounded-xl text-slate-600 text-sm font-bold transition-all"
+                                    title={sortOrder === 'desc' ? 'Sort Ascending' : 'Sort Descending'}
+                                >
+                                    <ArrowUpDown size={16} className={sortOrder === 'asc' ? 'rotate-180 transition-transform' : 'transition-transform'} />
+                                    {sortOrder === 'desc' ? 'Newest First' : 'Oldest First'}
+                                </button>
+                                <button
+                                    onClick={() => fetchFeaturedImages()}
+                                    className="flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-slate-100 rounded-xl text-slate-600 text-sm font-bold transition-all"
+                                >
+                                    <RefreshCw size={16} className={loadingFeatured ? 'animate-spin' : ''} />
+                                    Refresh
+                                </button>
+                            </div>
+                        </div>
+
+                        {selectedIds.length > 0 && featuredImages.length > 0 && (
+                            <div className="flex items-center justify-between mb-6 p-4 bg-indigo-50 rounded-2xl border border-indigo-100 animate-in slide-in-from-top-2 duration-300">
+                                <div className="flex items-center gap-4">
+                                    <button
+                                        onClick={toggleSelectAll}
+                                        className="text-sm font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-2"
+                                    >
+                                        <div className={`w-5 h-5 rounded border flex items-center justify-center ${selectedIds.length === featuredImages.length ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-indigo-300'}`}>
+                                            {selectedIds.length === featuredImages.length && <Check size={14} />}
+                                        </div>
+                                        {selectedIds.length === featuredImages.length ? 'Deselect All' : 'Select All'}
+                                    </button>
+                                    <span className="text-sm text-indigo-400">|</span>
+                                    <span className="text-sm font-medium text-indigo-600">{selectedIds.length} images selected</span>
+                                </div>
+                                <button
+                                    onClick={handleBulkDownload}
+                                    disabled={selectedIds.length === 0}
+                                    className="flex items-center gap-2 px-6 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 disabled:opacity-50 disabled:shadow-none"
+                                >
+                                    <Download size={18} />
+                                    Download Selected
+                                </button>
+                            </div>
+                        )}
+
+                        {loadingFeatured ? (
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                                {[1, 2, 3, 4, 5, 6, 7, 8].map(n => (
+                                    <div key={n} className="aspect-square bg-slate-100 rounded-2xl animate-pulse" />
+                                ))}
+                            </div>
+                        ) : featuredImages.length > 0 ? (
+                            <>
+                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                                    {featuredImages.map(img => (
+                                        <div
+                                            key={img.public_id}
+                                            onClick={() => toggleImageSelection(img.public_id)}
+                                            className={`group relative aspect-square bg-slate-100 rounded-2xl overflow-hidden border-2 transition-all duration-300 cursor-pointer ${selectedIds.includes(img.public_id) ? 'border-indigo-600 shadow-xl' : 'border-transparent hover:border-indigo-200'}`}
+                                        >
+                                            <img
+                                                src={`https://res.cloudinary.com/${project.cloudinaryCloudName || 'placeholder'}/image/upload/w_400,c_fill,g_auto/v${img.version}/${img.public_id}.${img.format}`}
+                                                alt={img.public_id}
+                                                className={`w-full h-full object-cover transition-transform duration-500 ${selectedIds.includes(img.public_id) ? 'scale-95 opacity-90' : 'group-hover:scale-110'}`}
+                                            />
+
+                                            <div className={`absolute top-3 right-3 z-20 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${selectedIds.includes(img.public_id) ? 'bg-indigo-600 border-indigo-600 text-white active:scale-90' : 'bg-black/20 backdrop-blur-md border-white/50 opacity-0 group-hover:opacity-100'}`}>
+                                                {selectedIds.includes(img.public_id) && <Check size={16} />}
+                                            </div>
+
+                                            <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-4 flex flex-col justify-end">
+                                                <p className="text-white text-[10px] font-bold truncate">
+                                                    {project.name} - {new Date(img.created_at).toLocaleString(undefined, {
+                                                        month: 'short',
+                                                        day: 'numeric',
+                                                        hour: '2-digit',
+                                                        minute: '2-digit'
+                                                    })}
+                                                </p>
+                                                <div className="flex items-center gap-2 mt-2">
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            const dateStr = new Date(img.created_at).toLocaleString(undefined, {
+                                                                month: 'short',
+                                                                day: 'numeric',
+                                                                hour: '2-digit',
+                                                                minute: '2-digit'
+                                                            }).replace(/[,:]/g, '').replace(/\s+/g, '_');
+                                                            const fileName = `${project.name}_${dateStr}.${img.format}`;
+                                                            handleDownload(
+                                                                `https://res.cloudinary.com/${project.cloudinaryCloudName || 'placeholder'}/image/upload/v${img.version}/${img.public_id}.${img.format}`,
+                                                                fileName
+                                                            );
+                                                        }}
+                                                        className="p-1.5 bg-white/20 backdrop-blur-md rounded-lg text-white hover:bg-white/40 transition-colors"
+                                                        title="Download Image"
+                                                    >
+                                                        <Download size={14} />
+                                                    </button>
+                                                    <a
+                                                        href={`https://res.cloudinary.com/${project.cloudinaryCloudName || 'placeholder'}/image/upload/v${img.version}/${img.public_id}.${img.format}`}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="p-1.5 bg-white/20 backdrop-blur-md rounded-lg text-white hover:bg-white/40 transition-colors"
+                                                        title="Open in new tab"
+                                                    >
+                                                        <ExternalLink size={14} />
+                                                    </a>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setInspectImage(img);
+                                                        }}
+                                                        className="p-1.5 bg-white/20 backdrop-blur-md rounded-lg text-white hover:bg-white/40 transition-colors"
+                                                        title="View Information"
+                                                    >
+                                                        <Info size={14} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                {featuredCursor && (
+                                    <div className="mt-12 flex justify-center">
+                                        <button
+                                            onClick={() => fetchFeaturedImages(undefined, true)}
+                                            disabled={loadingMoreFeatured}
+                                            className="flex items-center gap-2 px-8 py-3 bg-white border border-slate-200 rounded-xl text-slate-600 font-bold hover:bg-slate-50 hover:border-indigo-200 transition-all shadow-sm active:scale-95 disabled:opacity-50 disabled:active:scale-100"
+                                        >
+                                            {loadingMoreFeatured ? <RefreshCw className="animate-spin" size={18} /> : null}
+                                            {loadingMoreFeatured ? 'Loading More...' : 'Load More Images'}
+                                        </button>
+                                    </div>
+                                )}
+                            </>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center py-20 text-center border-2 border-dashed border-slate-100 rounded-3xl">
+                                <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-300 mb-4">
+                                    <Zap size={32} />
+                                </div>
+                                <h4 className="text-lg font-bold text-slate-800">No Featured Photos</h4>
+                                <p className="text-slate-500 max-w-sm mt-2">
+                                    Photos tagged with <span className="font-bold">"Screen-Saver"</span> will appear here. These are typically your best shots selected for the carousel.
+                                </p>
                             </div>
                         )}
                     </div>
