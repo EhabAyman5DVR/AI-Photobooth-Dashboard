@@ -30,6 +30,8 @@ import {
     Calendar,
     ArrowUpDown,
     Clock,
+    Star,
+    StarOff,
     X
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -62,6 +64,7 @@ export default function ProjectDetailPage() {
         dailyLimit: 0,
         cloudinaryTag: ''
     });
+    const [taggingId, setTaggingId] = useState<string | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -286,6 +289,58 @@ export default function ProjectDetailPage() {
         } catch (err) {
             console.error('Update error:', err);
             alert('Failed to update project');
+        }
+    };
+
+    const handleToggleTag = async (img: CloudinaryImage) => {
+        if (!project || taggingId) return;
+
+        const isFeatured = img.tags?.includes('Screen-Saver');
+        const action = isFeatured ? 'remove' : 'add';
+        const tag = 'Screen-Saver';
+
+        setTaggingId(img.public_id);
+        try {
+            const response = await fetch('/api/cloudinary/tags', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    public_id: img.public_id,
+                    tag,
+                    action,
+                    cloudName: project.cloudinaryCloudName,
+                    apiKey: project.cloudinaryApiKey,
+                    apiSecret: project.cloudinaryApiSecret
+                })
+            });
+
+            if (response.ok) {
+                // Update local state for 'images'
+                setImages(prev => prev.map(i => {
+                    if (i.public_id === img.public_id) {
+                        const newTags = isFeatured
+                            ? (i.tags || []).filter(t => t !== tag)
+                            : [...(i.tags || []), tag];
+                        return { ...i, tags: newTags };
+                    }
+                    return i;
+                }));
+
+                // Update featuredImages if needed
+                if (isFeatured) {
+                    setFeaturedImages(prev => prev.filter(i => i.public_id !== img.public_id));
+                } else {
+                    const updatedImg = { ...img, tags: [...(img.tags || []), tag] };
+                    setFeaturedImages(prev => [updatedImg, ...prev]);
+                }
+            } else {
+                const errorData = await response.json();
+                alert(`Failed to update tag: ${errorData.error}`);
+            }
+        } catch (err) {
+            console.error('Error toggling tag:', err);
+        } finally {
+            setTaggingId(null);
         }
     };
 
@@ -1033,6 +1088,26 @@ export default function ProjectDetailPage() {
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();
+                                                            handleToggleTag(img);
+                                                        }}
+                                                        disabled={taggingId === img.public_id}
+                                                        className={`p-1.5 backdrop-blur-md rounded-lg text-white transition-colors ${img.tags?.includes('Screen-Saver')
+                                                            ? 'bg-amber-500 hover:bg-amber-600'
+                                                            : 'bg-white/20 hover:bg-white/40'
+                                                            }`}
+                                                        title={img.tags?.includes('Screen-Saver') ? 'Remove from Featured' : 'Mark as Featured'}
+                                                    >
+                                                        {taggingId === img.public_id ? (
+                                                            <Loader2 size={14} className="animate-spin" />
+                                                        ) : img.tags?.includes('Screen-Saver') ? (
+                                                            <Star size={14} fill="currentColor" />
+                                                        ) : (
+                                                            <Star size={14} />
+                                                        )}
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
                                                             setInspectImage(img);
                                                         }}
                                                         className="p-1.5 bg-white/20 backdrop-blur-md rounded-lg text-white hover:bg-white/40 transition-colors"
@@ -1208,6 +1283,26 @@ export default function ProjectDetailPage() {
                                                     >
                                                         <ExternalLink size={14} />
                                                     </a>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleToggleTag(img);
+                                                        }}
+                                                        disabled={taggingId === img.public_id}
+                                                        className={`p-1.5 backdrop-blur-md rounded-lg text-white transition-colors ${img.tags?.includes('Screen-Saver')
+                                                            ? 'bg-amber-500 hover:bg-amber-600'
+                                                            : 'bg-white/20 hover:bg-white/40'
+                                                            }`}
+                                                        title={img.tags?.includes('Screen-Saver') ? 'Remove from Featured' : 'Mark as Featured'}
+                                                    >
+                                                        {taggingId === img.public_id ? (
+                                                            <Loader2 size={14} className="animate-spin" />
+                                                        ) : img.tags?.includes('Screen-Saver') ? (
+                                                            <Star size={14} fill="currentColor" />
+                                                        ) : (
+                                                            <Star size={14} />
+                                                        )}
+                                                    </button>
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();
