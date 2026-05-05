@@ -328,7 +328,14 @@ export default function ProjectDetailPage() {
 
                 // Update featuredImages if needed
                 if (isFeatured) {
-                    setFeaturedImages(prev => prev.filter(i => i.public_id !== img.public_id));
+                    setFeaturedImages(prev => {
+                        const remaining = prev.filter(i => i.public_id !== img.public_id);
+                        // If we just emptied the list but there's more on the server, auto-fetch
+                        if (remaining.length === 0 && featuredCursor) {
+                            fetchFeaturedImages(undefined, true);
+                        }
+                        return remaining;
+                    });
                 } else {
                     const updatedImg = { ...img, tags: [...(img.tags || []), tag] };
                     setFeaturedImages(prev => [updatedImg, ...prev]);
@@ -1224,7 +1231,7 @@ export default function ProjectDetailPage() {
                                     <div key={n} className="aspect-square bg-slate-100 rounded-2xl animate-pulse" />
                                 ))}
                             </div>
-                        ) : featuredImages.length > 0 ? (
+                        ) : (featuredImages.length > 0 || featuredCursor) ? (
                             <>
                                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                                     {featuredImages.map(img => (
@@ -1318,6 +1325,13 @@ export default function ProjectDetailPage() {
                                         </div>
                                     ))}
                                 </div>
+                                {featuredImages.length === 0 && featuredCursor && (
+                                    <div className="flex flex-col items-center justify-center py-20 text-center w-full">
+                                        <Loader2 className="animate-spin text-indigo-600 mb-4" size={32} />
+                                        <p className="text-slate-500 font-medium">Fetching more featured photos...</p>
+                                    </div>
+                                )}
+
                                 {featuredCursor && (
                                     <div className="mt-12 flex justify-center">
                                         <button
