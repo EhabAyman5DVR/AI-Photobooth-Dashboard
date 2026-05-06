@@ -295,9 +295,9 @@ export default function ProjectDetailPage() {
     const handleToggleTag = async (img: CloudinaryImage) => {
         if (!project || taggingId) return;
 
-        const isFeatured = img.tags?.includes('Screen-Saver');
+        const isFeatured = img.tags?.includes('Featured');
         const action = isFeatured ? 'remove' : 'add';
-        const tag = 'Screen-Saver';
+        const tag = 'Featured';
 
         setTaggingId(img.public_id);
         try {
@@ -338,7 +338,10 @@ export default function ProjectDetailPage() {
                     });
                 } else {
                     const updatedImg = { ...img, tags: [...(img.tags || []), tag] };
-                    setFeaturedImages(prev => [updatedImg, ...prev]);
+                    setFeaturedImages(prev => {
+                        if (prev.some(i => i.public_id === img.public_id)) return prev;
+                        return [updatedImg, ...prev];
+                    });
                 }
             } else {
                 const errorData = await response.json();
@@ -375,7 +378,11 @@ export default function ProjectDetailPage() {
             if (response.ok) {
                 const data = await response.json();
                 if (append) {
-                    setImages(prev => [...prev, ...(data.resources || [])]);
+                    setImages(prev => {
+                        const existingIds = new Set(prev.map(i => i.public_id));
+                        const newResources = (data.resources || []).filter((r: any) => !existingIds.has(r.public_id));
+                        return [...prev, ...newResources];
+                    });
                 } else {
                     setImages(data.resources || []);
                 }
@@ -398,7 +405,7 @@ export default function ProjectDetailPage() {
         const projectTag = p.cloudinaryTag || '';
         if (!projectTag) return;
 
-        const activeTag = 'Screen-Saver';
+        const activeTag = 'Featured';
 
         if (append) setLoadingMoreFeatured(true);
         else setLoadingFeatured(true);
@@ -416,7 +423,11 @@ export default function ProjectDetailPage() {
             if (response.ok) {
                 const data = await response.json();
                 if (append) {
-                    setFeaturedImages(prev => [...prev, ...(data.resources || [])]);
+                    setFeaturedImages(prev => {
+                        const existingIds = new Set(prev.map(i => i.public_id));
+                        const newResources = (data.resources || []).filter((r: any) => !existingIds.has(r.public_id));
+                        return [...prev, ...newResources];
+                    });
                 } else {
                     setFeaturedImages(data.resources || []);
                 }
@@ -1026,7 +1037,7 @@ export default function ProjectDetailPage() {
                                     <div key={n} className="aspect-square bg-slate-100 rounded-2xl animate-pulse" />
                                 ))}
                             </div>
-                        ) : images.length > 0 ? (
+                        ) : (images.length > 0 || nextCursor) ? (
                             <>
                                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                                     {images.map(img => (
@@ -1045,7 +1056,7 @@ export default function ProjectDetailPage() {
                                                 {selectedIds.includes(img.public_id) && <Check size={16} />}
                                             </div>
 
-                                            {img.tags?.includes('Screen-Saver') && (
+                                            {img.tags?.includes('Featured') && (
                                                 <div className="absolute top-3 left-3 z-20 px-2 py-1 bg-amber-500 text-white text-[10px] font-bold rounded-lg shadow-lg flex items-center gap-1 animate-in zoom-in-95">
                                                     <Zap size={10} fill="currentColor" />
                                                     Featured
@@ -1098,15 +1109,15 @@ export default function ProjectDetailPage() {
                                                             handleToggleTag(img);
                                                         }}
                                                         disabled={taggingId === img.public_id}
-                                                        className={`p-1.5 backdrop-blur-md rounded-lg text-white transition-colors ${img.tags?.includes('Screen-Saver')
+                                                        className={`p-1.5 backdrop-blur-md rounded-lg text-white transition-colors ${img.tags?.includes('Featured')
                                                             ? 'bg-amber-500 hover:bg-amber-600'
                                                             : 'bg-white/20 hover:bg-white/40'
                                                             }`}
-                                                        title={img.tags?.includes('Screen-Saver') ? 'Remove from Featured' : 'Mark as Featured'}
+                                                        title={img.tags?.includes('Featured') ? 'Remove from Featured' : 'Mark as Featured'}
                                                     >
                                                         {taggingId === img.public_id ? (
                                                             <Loader2 size={14} className="animate-spin" />
-                                                        ) : img.tags?.includes('Screen-Saver') ? (
+                                                        ) : img.tags?.includes('Featured') ? (
                                                             <Star size={14} fill="currentColor" />
                                                         ) : (
                                                             <Star size={14} />
@@ -1127,6 +1138,12 @@ export default function ProjectDetailPage() {
                                         </div>
                                     ))}
                                 </div>
+                                {images.length === 0 && nextCursor && (
+                                    <div className="flex flex-col items-center justify-center py-20 text-center w-full">
+                                        <Loader2 className="animate-spin text-indigo-600 mb-4" size={32} />
+                                        <p className="text-slate-500 font-medium">Fetching more images...</p>
+                                    </div>
+                                )}
                                 {nextCursor && (
                                     <div className="mt-12 flex justify-center">
                                         <button
@@ -1170,7 +1187,7 @@ export default function ProjectDetailPage() {
                                     <Zap className="text-amber-500" />
                                     Featured Photos
                                 </h3>
-                                <p className="text-slate-500 text-sm mt-1">High-quality photos tagged for Screen-Saver</p>
+                                <p className="text-slate-500 text-sm mt-1">High-quality photos tagged for Featured</p>
                             </div>
                             <div className="flex items-center gap-3">
                                 {selectedIds.length > 0 && (
@@ -1225,7 +1242,17 @@ export default function ProjectDetailPage() {
                             </div>
                         )}
 
-                        {loadingFeatured ? (
+                        {!project.cloudinaryTag ? (
+                            <div className="flex flex-col items-center justify-center py-20 text-center">
+                                <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center text-amber-500 mb-4">
+                                    <Info size={32} />
+                                </div>
+                                <h4 className="text-lg font-bold text-slate-800">Cloudinary Not Configured</h4>
+                                <p className="text-slate-500 max-w-sm mt-2">
+                                    Please set a Cloud Name and Tag in the project settings to fetch featured photos from your Cloudinary account.
+                                </p>
+                            </div>
+                        ) : loadingFeatured ? (
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                                 {[1, 2, 3, 4, 5, 6, 7, 8].map(n => (
                                     <div key={n} className="aspect-square bg-slate-100 rounded-2xl animate-pulse" />
@@ -1296,15 +1323,15 @@ export default function ProjectDetailPage() {
                                                             handleToggleTag(img);
                                                         }}
                                                         disabled={taggingId === img.public_id}
-                                                        className={`p-1.5 backdrop-blur-md rounded-lg text-white transition-colors ${img.tags?.includes('Screen-Saver')
+                                                        className={`p-1.5 backdrop-blur-md rounded-lg text-white transition-colors ${img.tags?.includes('Featured')
                                                             ? 'bg-amber-500 hover:bg-amber-600'
                                                             : 'bg-white/20 hover:bg-white/40'
                                                             }`}
-                                                        title={img.tags?.includes('Screen-Saver') ? 'Remove from Featured' : 'Mark as Featured'}
+                                                        title={img.tags?.includes('Featured') ? 'Remove from Featured' : 'Mark as Featured'}
                                                     >
                                                         {taggingId === img.public_id ? (
                                                             <Loader2 size={14} className="animate-spin" />
-                                                        ) : img.tags?.includes('Screen-Saver') ? (
+                                                        ) : img.tags?.includes('Featured') ? (
                                                             <Star size={14} fill="currentColor" />
                                                         ) : (
                                                             <Star size={14} />
@@ -1352,7 +1379,7 @@ export default function ProjectDetailPage() {
                                 </div>
                                 <h4 className="text-lg font-bold text-slate-800">No Featured Photos</h4>
                                 <p className="text-slate-500 max-w-sm mt-2">
-                                    Photos tagged with <span className="font-bold">"Screen-Saver"</span> will appear here. These are typically your best shots selected for the carousel.
+                                    Photos tagged with <span className="font-bold">"Featured"</span> will appear here. These are typically your best shots selected for the carousel.
                                 </p>
                             </div>
                         )}
